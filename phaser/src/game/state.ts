@@ -45,7 +45,7 @@ export function freshState(): SaveState {
     score: 0,
     totalScore: 0,
     ship: { hull: 0, thrusters: 1, inFlight: false, flightHull: 0, altitude: 0 },
-    world: { map: generateWorldMap(), x: 0, y: 0, hp: 10, maxHp: 10, food: 0, water: 0, steps: 0, active: false, visited: ['0,0'], cleared: [] },
+    world: { map: generateWorldMap(), pendingLandmark: null, activeEnemy: null, x: 0, y: 0, hp: 10, maxHp: 10, food: 0, water: 0, steps: 0, active: false, visited: ['0,0'], cleared: [] },
     log: ['四周一片漆黑。', '空气冰冷。有人蜷缩在角落里。'],
   };
 }

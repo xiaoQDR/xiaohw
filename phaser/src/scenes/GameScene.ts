@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { BUILDINGS, CRAFTS, FIRE_NAMES, JOB_NAMES, JOB_PRODUCTION, RESOURCE_NAMES, TRADES } from '../game/data';
 import { clearState, freshState, loadState, saveState } from '../game/state';
-import type { BuildDefinition, Cost, CraftDefinition, Job, Resource, SaveState, TradeDefinition, ViewName } from '../game/types';
+import type { BuildDefinition, Cost, CraftDefinition, EnemyState, Job, LandmarkEventState, Resource, SaveState, TradeDefinition, ViewName } from '../game/types';
 import { getLandmark, getWorldTile, WORLD_RADIUS } from '../game/worldMap';
 import { button, COLORS, formatAmount, label, panel, type ButtonParts } from '../ui/components';
 
@@ -15,15 +15,6 @@ interface WeaponDefinition {
   cooldown: number;
   ammo?: Resource;
   permanent?: string;
-}
-
-interface PendingLandmark {
-  tile: string;
-  key: string;
-  name: string;
-  danger: number;
-  stage: 'intro' | 'reward';
-  loot: Partial<Record<Resource, number>>;
 }
 
 const LANDMARK_TEXT: Record<string, { intro: string; approach: string; cleared: string }> = {
@@ -89,9 +80,9 @@ export class GameScene extends Phaser.Scene {
   private resourceText!: Phaser.GameObjects.Text;
   private clockText!: Phaser.GameObjects.Text;
   private saveText!: Phaser.GameObjects.Text;
-  private activeEnemy: { name: string; hp: number; maxHp: number; damage: number; nextAttack: number; stunnedUntil: number; loot: Partial<Record<Resource, number>>; landmarkKey?: string } | null = null;
+  private activeEnemy: EnemyState | null = null;
   private actionReadyAt: Record<string, number> = {};
-  private pendingLandmark: PendingLandmark | null = null;
+  private pendingLandmark: LandmarkEventState | null = null;
   private spaceShipObject: Phaser.GameObjects.Rectangle | null = null;
   private spaceHullText: Phaser.GameObjects.Text | null = null;
   private spaceAltitudeText: Phaser.GameObjects.Text | null = null;
@@ -111,6 +102,8 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.state = loadState();
+    this.activeEnemy = this.state.world.activeEnemy;
+    this.pendingLandmark = this.state.world.pendingLandmark;
     this.cameras.main.setBackgroundColor(COLORS.bg);
     this.resizeViewport(this.scale.gameSize);
     this.scale.on(Phaser.Scale.Events.RESIZE, this.resizeViewport, this);
@@ -1057,6 +1050,8 @@ export class GameScene extends Phaser.Scene {
       clearState();
       this.state = freshState();
       this.state.totalScore = totalScore;
+      this.activeEnemy = null;
+      this.pendingLandmark = null;
       this.persist(false);
       this.showView('room');
     });
@@ -1158,6 +1153,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private persist(show = true): void {
+    this.state.world.activeEnemy = this.activeEnemy;
+    this.state.world.pendingLandmark = this.pendingLandmark;
     saveState(this.state);
     if (show) {
       this.saveText.setText('已保存');
@@ -1173,6 +1170,8 @@ export class GameScene extends Phaser.Scene {
     const yes = button(this, 380, H / 2 + 80, 280, 82, '重新开始', () => {
       clearState();
       this.state = freshState();
+      this.activeEnemy = null;
+      this.pendingLandmark = null;
       modal.destroy(true);
       this.showView('room');
     });

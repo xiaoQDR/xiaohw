@@ -15,8 +15,30 @@ export type Job =
 export type ViewName = 'room' | 'village' | 'world' | 'ship' | 'space' | 'ending';
 export type ItemType = 'tool' | 'upgrade' | 'weapon' | 'good' | 'special';
 
+export interface LandmarkEventState {
+  tile: string;
+  key: string;
+  name: string;
+  danger: number;
+  stage: 'intro' | 'reward';
+  loot: Partial<Record<Resource, number>>;
+}
+
+export interface EnemyState {
+  name: string;
+  hp: number;
+  maxHp: number;
+  damage: number;
+  nextAttack: number;
+  stunnedUntil: number;
+  loot: Partial<Record<Resource, number>>;
+  landmarkKey?: string;
+}
+
 export interface WorldState {
   map: string[][];
+  pendingLandmark: LandmarkEventState | null;
+  activeEnemy: EnemyState | null;
   x: number;
   y: number;
   hp: number;
