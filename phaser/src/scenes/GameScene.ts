@@ -41,6 +41,29 @@ const LANDMARK_TEXT: Record<string, { intro: string; approach: string; cleared: 
   X: { intro: '受创战舰横卧荒野，陌生信号从内部重复发出。', approach: '进入战舰', cleared: '异星舰桥向旅人开放。' },
 };
 
+const AUDIO_FILES = [
+  'fire-dead', 'fire-smoldering', 'fire-flickering', 'fire-burning', 'fire-roaring',
+  'silent-forest', 'lonely-hut', 'tiny-village', 'modest-village', 'large-village', 'raucous-village',
+  'world', 'dusty-path', 'ship', 'space', 'ending', 'light-fire', 'stoke-fire', 'gather-wood', 'check-traps',
+  'build', 'craft', 'buy', 'embark', 'eat-meat', 'use-meds', 'death', 'reinforce-hull',
+  'upgrade-engine', 'lift-off', 'crash', 'encounter-tier-1', 'encounter-tier-2', 'encounter-tier-3',
+  'weapon-unarmed-1', 'weapon-unarmed-2', 'weapon-unarmed-3',
+  'weapon-melee-1', 'weapon-melee-2', 'weapon-melee-3',
+  'weapon-ranged-1', 'weapon-ranged-2', 'weapon-ranged-3',
+  'footsteps-1', 'footsteps-2', 'footsteps-3', 'footsteps-4', 'footsteps-5', 'footsteps-6',
+  'asteroid-hit-1', 'asteroid-hit-2', 'asteroid-hit-3', 'asteroid-hit-4',
+  'asteroid-hit-5', 'asteroid-hit-6', 'asteroid-hit-7', 'asteroid-hit-8',
+  'landmark-swamp', 'landmark-cave', 'landmark-town', 'landmark-city', 'landmark-house',
+  'landmark-battlefield', 'landmark-borehole', 'landmark-crashed-ship', 'landmark-sulphurmine',
+  'landmark-coalmine', 'landmark-ironmine',
+] as const;
+
+const LANDMARK_AUDIO: Record<string, string> = {
+  I: 'landmark-ironmine', C: 'landmark-coalmine', S: 'landmark-sulphurmine', H: 'landmark-house',
+  V: 'landmark-cave', O: 'landmark-town', Y: 'landmark-city', W: 'landmark-crashed-ship',
+  B: 'landmark-borehole', F: 'landmark-battlefield', M: 'landmark-swamp', X: 'landmark-crashed-ship',
+};
+
 const WEAPONS: WeaponDefinition[] = [
   { id: 'fists', name: '拳击', damage: 1, cooldown: 2 },
   { id: 'boneSpear', name: '刺击', damage: 2, cooldown: 2, permanent: 'boneSpear' },
@@ -75,9 +98,15 @@ export class GameScene extends Phaser.Scene {
   private spaceAsteroids = new Set<Phaser.GameObjects.Text>();
   private spaceDirection = { up: false, down: false, left: false, right: false };
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
+  private currentMusic: Phaser.Sound.BaseSound | null = null;
+  private currentMusicKey = '';
 
   constructor() {
     super('game');
+  }
+
+  preload(): void {
+    AUDIO_FILES.forEach(file => this.load.audio(file, `audio/${file}.flac`));
   }
 
   create(): void {
@@ -96,6 +125,7 @@ export class GameScene extends Phaser.Scene {
     this.time.addEvent({ delay: 33, loop: true, callback: this.updateSpace, callbackScope: this });
     this.time.addEvent({ delay: 500, loop: true, callback: this.spawnAsteroidWave, callbackScope: this });
     this.cursors = this.input.keyboard?.createCursorKeys();
+    this.input.once('pointerdown', () => this.updateMusic(true));
     this.input.keyboard?.on('keydown-ONE', () => this.showView('room'));
     this.input.keyboard?.on('keydown-TWO', () => this.state.builderArrived && this.showView('village'));
     this.input.keyboard?.on('keydown-THREE', () => this.state.worldUnlocked && this.showView('world'));
@@ -179,6 +209,7 @@ export class GameScene extends Phaser.Scene {
     if (view === 'space') this.drawSpace();
     if (view === 'ending') this.drawEnding();
     this.refreshHeader();
+    this.updateMusic();
   }
 
   private addLog(message: string): void {
@@ -214,6 +245,7 @@ export class GameScene extends Phaser.Scene {
       const light = button(this, cx, actionY, 440, 92, '点燃火堆', () => {
         s.fire = 1;
         s.fireSeconds = 60;
+        this.playSfx('light-fire');
         this.addLog('火苗照亮了潮湿的墙。');
         this.showView('room');
       });
@@ -263,6 +295,7 @@ export class GameScene extends Phaser.Scene {
     this.state.stores.wood -= 1;
     this.state.fire += 1;
     this.state.fireSeconds = 60 + this.state.fire * 20;
+    this.playSfx('stoke-fire');
     this.addLog(this.state.fire === 4 ? '火焰咆哮起来。' : '火焰吞下木头，亮了一些。');
     this.showView('room');
   }
@@ -272,6 +305,7 @@ export class GameScene extends Phaser.Scene {
     const amount = this.state.buildings.cart ? 50 : 10;
     this.state.stores.wood += amount;
     this.state.gatherCooldown = 60;
+    this.playSfx('gather-wood');
     this.addLog(`在林边捡到 ${amount} 根木材。`);
     this.showView('room');
   }
@@ -298,6 +332,7 @@ export class GameScene extends Phaser.Scene {
     }
     s.stores.bait -= baitUsed;
     s.trapCooldown = 90;
+    this.playSfx('check-traps');
     this.addLog(`陷阱里有${[...found].map(([name, amount]) => `${amount} ${name}`).join('、')}。`);
     this.showView('room');
   }
@@ -358,6 +393,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.canAfford(cost) || (def.max && this.state.buildings[def.id] >= def.max)) return;
     this.pay(cost);
     this.state.buildings[def.id] += 1;
+    this.playSfx('build');
     this.addLog(`${def.name}建成了。村子显得没那么荒凉。`);
     this.showView('village');
   }
@@ -441,6 +477,7 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.state.crafted[def.id] = owned + (def.quantity ?? 1);
     }
+    this.playSfx('craft');
     this.addLog(`${def.name}制作完成。`);
     this.showView('village');
     this.page = 2;
@@ -483,6 +520,7 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.state.crafted[def.id] = owned + (def.quantity ?? 1);
     }
+    this.playSfx('buy');
     if (def.id === 'compass') {
       this.state.worldUnlocked = true;
       this.addLog('罗盘指针颤动着，荒野不再是一团迷雾。');
@@ -603,6 +641,7 @@ export class GameScene extends Phaser.Scene {
     world.water = this.getWaterCapacity();
     world.visited = Array.from(new Set([...world.visited, '0,0']));
     this.addLog('带着有限的补给，旅人踏入荒野。');
+    this.playSfx('embark');
     this.showView('world');
   }
 
@@ -632,6 +671,7 @@ export class GameScene extends Phaser.Scene {
     if (!w.active || this.activeEnemy) return;
     if (Math.abs(w.x + dx) > WORLD_RADIUS || Math.abs(w.y + dy) > WORLD_RADIUS) return;
     w.x += dx; w.y += dy; w.steps += 1;
+    this.playSfx(`footsteps-${Phaser.Math.Between(1, 6)}`);
     if (w.steps % 2 === 0) w.food = Math.max(0, w.food - 1);
     w.water = Math.max(0, w.water - 1);
     const key = `${w.x},${w.y}`;
@@ -651,6 +691,7 @@ export class GameScene extends Phaser.Scene {
         stage: 'intro',
         loot: this.getLandmarkLoot(landmark.tile),
       };
+      this.playSfx(LANDMARK_AUDIO[landmark.tile] ?? 'encounter-tier-1');
       this.showView('world');
       return;
     }
@@ -733,6 +774,7 @@ export class GameScene extends Phaser.Scene {
   private startCombat(name: string, hp: number, loot: Partial<Record<Resource, number>>, landmarkKey?: string): void {
     this.activeEnemy = { name, hp, maxHp: hp, damage: Math.max(1, Math.floor(hp / 7)), nextAttack: Date.now() + 1600, stunnedUntil: 0, loot, landmarkKey };
     this.actionReadyAt = {};
+    this.playSfx(hp < 12 ? 'encounter-tier-1' : hp < 22 ? 'encounter-tier-2' : 'encounter-tier-3');
     this.showView('world');
   }
 
@@ -786,6 +828,8 @@ export class GameScene extends Phaser.Scene {
     if (!enemy || Date.now() < (this.actionReadyAt[weapon.id] ?? 0)) return;
     if (weapon.ammo && this.state.stores[weapon.ammo] <= 0) return;
     if (weapon.ammo) this.state.stores[weapon.ammo] -= 1;
+    const soundType = weapon.id === 'fists' ? 'unarmed' : weapon.ammo ? 'ranged' : 'melee';
+    this.playSfx(`weapon-${soundType}-${Phaser.Math.Between(1, 3)}`);
     if (weapon.damage === 'stun') {
       enemy.stunnedUntil = Date.now() + 4000;
     } else if (Math.random() <= 0.8) {
@@ -821,11 +865,13 @@ export class GameScene extends Phaser.Scene {
     if (kind === 'meat') {
       if (world.food <= 0 || Date.now() < (this.actionReadyAt.meat ?? 0)) return;
       world.food -= 1;
+      this.playSfx('eat-meat');
       world.hp = Math.min(world.maxHp, world.hp + 8);
       this.actionReadyAt.meat = Date.now() + 5000;
     } else {
       if (this.state.stores.medicine <= 0 || Date.now() < (this.actionReadyAt.medicine ?? 0)) return;
       this.state.stores.medicine -= 1;
+      this.playSfx('use-meds');
       world.hp = Math.min(world.maxHp, world.hp + 20);
       this.actionReadyAt.medicine = Date.now() + 7000;
     }
@@ -837,6 +883,7 @@ export class GameScene extends Phaser.Scene {
     w.active = false; w.x = 0; w.y = 0; w.hp = w.maxHp; w.food = 0; w.water = 0;
     this.activeEnemy = null;
     this.pendingLandmark = null;
+    this.playSfx('death');
     this.addLog('旅人在荒野中倒下，醒来时已回到火堆旁。');
     this.showView('room');
   }
@@ -875,6 +922,7 @@ export class GameScene extends Phaser.Scene {
     if (this.state.stores.alienAlloy < 1) return;
     this.state.stores.alienAlloy -= 1;
     this.state.ship[part] += 1;
+    this.playSfx(part === 'hull' ? 'reinforce-hull' : 'upgrade-engine');
     this.addLog(part === 'hull' ? '外星合金被焊进破损的船体。' : '引擎发出更稳定的低鸣。');
     this.showView('ship');
   }
@@ -885,6 +933,7 @@ export class GameScene extends Phaser.Scene {
     ship.inFlight = true;
     ship.flightHull = ship.hull;
     ship.altitude = 0;
+    this.playSfx('lift-off');
     this.persist(false);
     this.showView('space');
   }
@@ -937,6 +986,8 @@ export class GameScene extends Phaser.Scene {
         this.spaceAsteroids.delete(asteroid);
         asteroid.destroy();
         this.state.ship.flightHull -= 1;
+        const tier = this.state.ship.altitude > 40 ? Phaser.Math.Between(7, 8) : this.state.ship.altitude > 20 ? Phaser.Math.Between(5, 6) : Phaser.Math.Between(1, 2);
+        this.playSfx(`asteroid-hit-${tier}`);
         this.spaceHullText?.setText(`船体 ${this.state.ship.flightHull}/${this.state.ship.hull}`);
         if (this.state.ship.flightHull <= 0) this.crashShip();
       }
@@ -966,6 +1017,7 @@ export class GameScene extends Phaser.Scene {
     this.state.ship.inFlight = false;
     this.state.ship.altitude = 0;
     this.spaceAsteroids.clear();
+    this.playSfx('crash');
     this.addLog('星舰被陨石撕开，只能坠回荒原。');
     this.persist(false);
     this.showView('ship');
@@ -1079,6 +1131,30 @@ export class GameScene extends Phaser.Scene {
     this.state.world.hp -= enemy.damage;
     enemy.nextAttack = Date.now() + 1600;
     if (this.state.world.hp <= 0) this.collapse();
+  }
+
+  private playSfx(key: string): void {
+    if (!this.cache.audio.exists(key)) return;
+    this.sound.play(key, { volume: 0.72 });
+  }
+
+  private updateMusic(force = false): void {
+    let key = '';
+    if (this.view === 'room') key = ['fire-dead', 'fire-smoldering', 'fire-flickering', 'fire-burning', 'fire-roaring'][this.state.fire];
+    if (this.view === 'village') {
+      const huts = this.state.buildings.hut;
+      key = huts === 0 ? 'silent-forest' : huts === 1 ? 'lonely-hut' : huts <= 4 ? 'tiny-village' : huts <= 8 ? 'modest-village' : huts <= 14 ? 'large-village' : 'raucous-village';
+    }
+    if (this.view === 'world') key = this.state.world.active ? 'world' : 'dusty-path';
+    if (this.view === 'ship') key = 'ship';
+    if (this.view === 'space') key = 'space';
+    if (this.view === 'ending') key = 'ending';
+    if (!key || (!force && key === this.currentMusicKey)) return;
+    this.currentMusic?.stop();
+    this.currentMusic?.destroy();
+    this.currentMusic = this.sound.add(key, { loop: true, volume: 0.32 });
+    this.currentMusicKey = key;
+    this.currentMusic.play();
   }
 
   private persist(show = true): void {
