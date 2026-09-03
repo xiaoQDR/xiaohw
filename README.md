@@ -1,47 +1,35 @@
-A Dark Room
-===========
-> "awake. head throbbing. vision blurry. come light the fire."
+# xiaohw / 小黑屋
 
-a minimalist text adventure game for your browser
+本仓库包含两个相互独立的版本：
 
-[Click to play](http://adarkroom.doublespeakgames.com)
+| 目录 | 内容 |
+| --- | --- |
+| [`legacy/`](./legacy/) | 原始 A Dark Room JavaScript / jQuery 源码，完整保留供对照 |
+| [`phaser/`](./phaser/) | Phaser 3 + TypeScript 重构版，可直接开发和构建 Web |
 
-<table>
-<tr><th colspan=4>Available Languages</tr>
-<tr>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=zh_cn">Chinese (Simplified)</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=zh_tw">Chinese (Traditional)</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=en">English</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=fr">French</a></td>
-</tr><tr>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=de">German</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=el">Greek</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=id">Indonesian</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=it">Italian</a></td>
-</tr><tr>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=ja">Japanese</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=ko">Korean</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=nb">Norwegian</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=pl">Polish</a></td>
-</tr><tr>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=pt">Portuguese</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=pt_br">Portuguese (Brazil)</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=ru">Russian</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=es">Spanish</a></td>
-</tr><tr>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=sv">Swedish</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=th">Thai</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=tr">Turkish</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=uk">Ukrainian</a></td>
-</tr><tr>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=vi">Vietnamese</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=lt_LT">Lithuanian</a></td>
-	<td><a href="http://adarkroom.doublespeakgames.com/?lang=gl">Galician</a></td>
-</tr>
-</table>
+## Phaser 版
 
-or play the latest on [GitHub](http://doublespeakgames.github.io/adarkroom)
+```bash
+cd phaser
+npm install
+npm run dev
+```
 
-<a href="https://itunes.apple.com/us/app/a-dark-room/id736683061"><img src="http://i.imgur.com/DMdnDYq.png" height="50"></a>
-<a href="https://play.google.com/store/apps/details?id=com.yourcompany.adarkroom"><img src="http://i.imgur.com/bLWWj4r.png" height="50"></a>
-<a href="https://store.steampowered.com/app/2460660/A_Dark_Room/"><img src="https://i.imgur.com/yz6cnU0.png" height="50"></a>
+生产构建：
+
+```bash
+cd phaser
+npm ci
+npm run build
+```
+
+每次提交到 `main`，GitHub Actions 会自动：
+
+1. 安装锁定依赖并执行 TypeScript 检查；
+2. 构建 `phaser/dist/`；
+3. 上传 `xiaohw-web` 构建包；
+4. 部署到 GitHub Pages。
+
+## 许可
+
+原始版本及其资源的许可见 [`legacy/LICENSE.md`](./legacy/LICENSE.md)。Phaser 重构代码延续 MPL-2.0。

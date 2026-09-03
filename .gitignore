@@ -1,9 +1,5 @@
-/.settings
-*.TODO
-*.mo
-*.swp
-.idea
-lang/.DS_Store
+node_modules/
+dist/
 .DS_Store
-node_modules
-img/Thumbs.db
+*.log
+.vite/
