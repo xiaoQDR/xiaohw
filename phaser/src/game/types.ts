@@ -12,7 +12,7 @@ export type Job =
   | 'gatherer' | 'hunter' | 'trapper' | 'tanner' | 'charcutier'
   | 'ironMiner' | 'coalMiner' | 'sulphurMiner' | 'steelworker' | 'armourer';
 
-export type ViewName = 'room' | 'village' | 'world';
+export type ViewName = 'room' | 'village' | 'world' | 'ship' | 'space' | 'ending';
 export type ItemType = 'tool' | 'upgrade' | 'weapon' | 'good' | 'special';
 
 export interface WorldState {
@@ -46,6 +46,17 @@ export interface SaveState {
   crafted: Record<string, number>;
   builderArrived: boolean;
   worldUnlocked: boolean;
+  shipUnlocked: boolean;
+  gameWon: boolean;
+  score: number;
+  totalScore: number;
+  ship: {
+    hull: number;
+    thrusters: number;
+    inFlight: boolean;
+    flightHull: number;
+    altitude: number;
+  };
   world: WorldState;
   log: string[];
 }

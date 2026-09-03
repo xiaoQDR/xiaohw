@@ -40,6 +40,11 @@ export function freshState(): SaveState {
     crafted: {},
     builderArrived: false,
     worldUnlocked: false,
+    shipUnlocked: false,
+    gameWon: false,
+    score: 0,
+    totalScore: 0,
+    ship: { hull: 0, thrusters: 1, inFlight: false, flightHull: 0, altitude: 0 },
     world: { map: generateWorldMap(), x: 0, y: 0, hp: 10, maxHp: 10, food: 0, water: 0, steps: 0, active: false, visited: ['0,0'], cleared: [] },
     log: ['四周一片漆黑。', '空气冰冷。有人蜷缩在角落里。'],
   };
@@ -63,6 +68,7 @@ export function loadState(): SaveState {
       stores: { ...resources(), ...migratedStores },
       buildings: { ...buildings(), ...saved.buildings },
       jobs: { ...jobs(), ...saved.jobs },
+      ship: { ...base.ship, ...saved.ship },
       world: { ...base.world, ...saved.world },
     };
   } catch {

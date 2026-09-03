@@ -69,6 +69,12 @@ export class GameScene extends Phaser.Scene {
   private activeEnemy: { name: string; hp: number; maxHp: number; damage: number; nextAttack: number; stunnedUntil: number; loot: Partial<Record<Resource, number>>; landmarkKey?: string } | null = null;
   private actionReadyAt: Record<string, number> = {};
   private pendingLandmark: PendingLandmark | null = null;
+  private spaceShipObject: Phaser.GameObjects.Rectangle | null = null;
+  private spaceHullText: Phaser.GameObjects.Text | null = null;
+  private spaceAltitudeText: Phaser.GameObjects.Text | null = null;
+  private spaceAsteroids = new Set<Phaser.GameObjects.Text>();
+  private spaceDirection = { up: false, down: false, left: false, right: false };
+  private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
 
   constructor() {
     super('game');
@@ -83,13 +89,17 @@ export class GameScene extends Phaser.Scene {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.resizeViewport, this);
     });
     this.drawShell();
-    this.showView(this.state.world.active ? 'world' : 'room');
+    this.showView(this.state.gameWon ? 'ending' : this.state.ship.inFlight ? 'space' : this.state.world.active ? 'world' : 'room');
 
     this.time.addEvent({ delay: 1000, loop: true, callback: this.tick, callbackScope: this });
     this.time.addEvent({ delay: 10000, loop: true, callback: () => this.persist(false) });
+    this.time.addEvent({ delay: 33, loop: true, callback: this.updateSpace, callbackScope: this });
+    this.time.addEvent({ delay: 500, loop: true, callback: this.spawnAsteroidWave, callbackScope: this });
+    this.cursors = this.input.keyboard?.createCursorKeys();
     this.input.keyboard?.on('keydown-ONE', () => this.showView('room'));
     this.input.keyboard?.on('keydown-TWO', () => this.state.builderArrived && this.showView('village'));
     this.input.keyboard?.on('keydown-THREE', () => this.state.worldUnlocked && this.showView('world'));
+    this.input.keyboard?.on('keydown-FOUR', () => this.state.shipUnlocked && !this.state.ship.inFlight && this.showView('ship'));
   }
 
   private resizeViewport(gameSize: Phaser.Structs.Size): void {
@@ -129,15 +139,18 @@ export class GameScene extends Phaser.Scene {
 
   private drawNav(): void {
     this.nav.removeAll(true);
+    if (this.view === 'space' || this.view === 'ending') return;
     const items: Array<{ id: ViewName; name: string; unlocked: boolean }> = [
       { id: 'room', name: '房间', unlocked: true },
       { id: 'village', name: '村庄', unlocked: this.state.builderArrived },
       { id: 'world', name: '荒野', unlocked: this.state.worldUnlocked },
     ];
+    if (this.state.shipUnlocked) items.push({ id: 'ship', name: '星舰', unlocked: true });
     items.forEach((item, index) => {
-      const x = 180 + index * 360;
+      const slot = W / items.length;
+      const x = slot * index + slot / 2;
       const active = this.view === item.id;
-      const bg = this.add.rectangle(x, 55, 300, 88, active ? 0x24272b : 0x15171a)
+      const bg = this.add.rectangle(x, 55, slot - 28, 88, active ? 0x24272b : 0x15171a)
         .setStrokeStyle(2, active ? COLORS.emberHex : COLORS.line);
       const text = label(this, x, 55, item.unlocked ? item.name : `${item.name} · 未知`, 26, active ? COLORS.ember : COLORS.dim).setOrigin(0.5);
       if (item.unlocked) {
@@ -153,6 +166,7 @@ export class GameScene extends Phaser.Scene {
   private showView(view: ViewName): void {
     if (view === 'village' && !this.state.builderArrived) return;
     if (view === 'world' && !this.state.worldUnlocked) return;
+    if (view === 'ship' && !this.state.shipUnlocked) return;
     this.view = view;
     this.page = 0;
     this.subPage = 0;
@@ -161,6 +175,9 @@ export class GameScene extends Phaser.Scene {
     if (view === 'room') this.drawRoom();
     if (view === 'village') this.drawVillage();
     if (view === 'world') this.drawWorld();
+    if (view === 'ship') this.drawShip();
+    if (view === 'space') this.drawSpace();
+    if (view === 'ending') this.drawEnding();
     this.refreshHeader();
   }
 
@@ -691,6 +708,10 @@ export class GameScene extends Phaser.Scene {
       this.state.stores[resource as Resource] += amount ?? 0;
     });
     if (!this.state.world.cleared.includes(event.key)) this.state.world.cleared.push(event.key);
+    if (event.tile === 'W') {
+      this.state.shipUnlocked = true;
+      this.addLog('星舰的控制台重新亮起。村庄外出现了一条通往船体的路。');
+    }
     this.addLog(`${event.name}已经清理，物资被带回行囊。`);
     this.pendingLandmark = null;
     this.showView('world');
@@ -829,8 +850,177 @@ export class GameScene extends Phaser.Scene {
     this.showView('village');
   }
 
+  private drawShip(): void {
+    const ship = this.state.ship;
+    this.root.add(label(this, 54, 35, '一艘旧星舰', 42).setFontStyle('bold'));
+    const shipPanel = panel(this, W / 2, 440, 972, 720, 0x111315);
+    this.root.add(shipPanel);
+    this.root.add(label(this, W / 2, 190, '@', 88, COLORS.ember).setOrigin(0.5));
+    this.root.add(label(this, 110, 300, '船体', 28));
+    this.root.add(label(this, 930, 300, `${ship.hull}`, 28).setOrigin(1, 0));
+    this.root.add(label(this, 110, 360, '引擎', 28));
+    this.root.add(label(this, 930, 360, `${ship.thrusters}`, 28).setOrigin(1, 0));
+    this.root.add(label(this, W / 2, 430, `外星合金 ${formatAmount(this.state.stores.alienAlloy)}`, 23, COLORS.dim).setOrigin(0.5));
+
+    const hull = button(this, W / 2, 530, 620, 82, '加固船体 · 外星合金 1', () => this.upgradeShip('hull'));
+    hull.setEnabled(this.state.stores.alienAlloy >= 1);
+    const engine = button(this, W / 2, 640, 620, 82, '升级引擎 · 外星合金 1', () => this.upgradeShip('thrusters'));
+    engine.setEnabled(this.state.stores.alienAlloy >= 1);
+    const launch = button(this, W / 2, 810, 620, 94, ship.hull > 0 ? '起飞 · 离开这里' : '至少需要 1 层船体', () => this.launchShip());
+    launch.setEnabled(ship.hull > 0);
+    this.root.add([hull.root, engine.root, launch.root]);
+  }
+
+  private upgradeShip(part: 'hull' | 'thrusters'): void {
+    if (this.state.stores.alienAlloy < 1) return;
+    this.state.stores.alienAlloy -= 1;
+    this.state.ship[part] += 1;
+    this.addLog(part === 'hull' ? '外星合金被焊进破损的船体。' : '引擎发出更稳定的低鸣。');
+    this.showView('ship');
+  }
+
+  private launchShip(): void {
+    const ship = this.state.ship;
+    if (ship.hull <= 0) return;
+    ship.inFlight = true;
+    ship.flightHull = ship.hull;
+    ship.altitude = 0;
+    this.persist(false);
+    this.showView('space');
+  }
+
+  private drawSpace(): void {
+    const ship = this.state.ship;
+    this.root.add(this.add.rectangle(W / 2, 700, W, 1400, 0x050608));
+    for (let index = 0; index < 100; index += 1) {
+      const star = label(this, Phaser.Math.Between(10, W - 10), Phaser.Math.Between(40, 1320), '·', Phaser.Math.Between(12, 22), index % 3 ? '#696d75' : '#d8dbe2').setOrigin(0.5);
+      this.root.add(star);
+    }
+    this.root.add(label(this, 45, 30, '上升', 36).setFontStyle('bold'));
+    this.spaceHullText = label(this, 45, 85, `船体 ${ship.flightHull}/${ship.hull}`, 24, COLORS.good);
+    this.spaceAltitudeText = label(this, W - 45, 85, `高度 ${ship.altitude}/60`, 24, COLORS.dim).setOrigin(1, 0);
+    this.root.add([this.spaceHullText, this.spaceAltitudeText]);
+    this.spaceShipObject = this.add.rectangle(W / 2, 1050, 54, 76, COLORS.emberHex).setStrokeStyle(3, 0xe6e1d8);
+    this.root.add(this.spaceShipObject);
+    this.spaceAsteroids.clear();
+
+    const controls = [
+      { key: 'up' as const, x: 540, y: 1280, text: '↑' },
+      { key: 'left' as const, x: 350, y: 1370, text: '←' },
+      { key: 'down' as const, x: 540, y: 1370, text: '↓' },
+      { key: 'right' as const, x: 730, y: 1370, text: '→' },
+    ];
+    controls.forEach(control => {
+      const part = button(this, control.x, control.y, 150, 74, control.text, () => undefined);
+      part.bg.on('pointerdown', () => { this.spaceDirection[control.key] = true; });
+      part.bg.on('pointerup', () => { this.spaceDirection[control.key] = false; });
+      part.bg.on('pointerout', () => { this.spaceDirection[control.key] = false; });
+      this.root.add(part.root);
+    });
+  }
+
+  private updateSpace(): void {
+    if (this.view !== 'space' || !this.state.ship.inFlight || !this.spaceShipObject) return;
+    const speed = 3 + this.state.ship.thrusters;
+    const left = this.spaceDirection.left || !!this.cursors?.left.isDown;
+    const right = this.spaceDirection.right || !!this.cursors?.right.isDown;
+    const up = this.spaceDirection.up || !!this.cursors?.up.isDown;
+    const down = this.spaceDirection.down || !!this.cursors?.down.isDown;
+    let dx = (right ? speed : 0) - (left ? speed : 0);
+    let dy = (down ? speed : 0) - (up ? speed : 0);
+    if (dx && dy) { dx /= Math.sqrt(2); dy /= Math.sqrt(2); }
+    this.spaceShipObject.x = Phaser.Math.Clamp(this.spaceShipObject.x + dx, 35, W - 35);
+    this.spaceShipObject.y = Phaser.Math.Clamp(this.spaceShipObject.y + dy, 150, 1180);
+    for (const asteroid of [...this.spaceAsteroids]) {
+      if (!asteroid.active) { this.spaceAsteroids.delete(asteroid); continue; }
+      if (Math.abs(asteroid.x - this.spaceShipObject.x) < 38 && Math.abs(asteroid.y - this.spaceShipObject.y) < 46) {
+        this.spaceAsteroids.delete(asteroid);
+        asteroid.destroy();
+        this.state.ship.flightHull -= 1;
+        this.spaceHullText?.setText(`船体 ${this.state.ship.flightHull}/${this.state.ship.hull}`);
+        if (this.state.ship.flightHull <= 0) this.crashShip();
+      }
+    }
+  }
+
+  private spawnAsteroidWave(): void {
+    if (this.view !== 'space' || !this.state.ship.inFlight) return;
+    const altitude = this.state.ship.altitude;
+    const count = 1 + (altitude > 10 ? 1 : 0) + (altitude > 20 ? 2 : 0) + (altitude > 40 ? 2 : 0);
+    for (let index = 0; index < count; index += 1) {
+      const asteroid = label(this, Phaser.Math.Between(35, W - 35), 130, Phaser.Utils.Array.GetRandom(['#', '$', '%', '&', 'H']), 34, '#b8b2a8').setOrigin(0.5);
+      this.root.add(asteroid);
+      this.spaceAsteroids.add(asteroid);
+      this.tweens.add({
+        targets: asteroid,
+        y: 1250,
+        duration: 1500 - Phaser.Math.Between(0, 975),
+        ease: 'Linear',
+        onComplete: () => { this.spaceAsteroids.delete(asteroid); asteroid.destroy(); },
+      });
+    }
+  }
+
+  private crashShip(): void {
+    if (!this.state.ship.inFlight) return;
+    this.state.ship.inFlight = false;
+    this.state.ship.altitude = 0;
+    this.spaceAsteroids.clear();
+    this.addLog('星舰被陨石撕开，只能坠回荒原。');
+    this.persist(false);
+    this.showView('ship');
+  }
+
+  private completeFlight(): void {
+    const score = this.calculateScore();
+    this.state.ship.inFlight = false;
+    this.state.gameWon = true;
+    this.state.score = score;
+    this.state.totalScore += score;
+    this.persist(false);
+    this.showView('ending');
+  }
+
+  private calculateScore(): number {
+    const s = this.state;
+    const weighted: Array<[number, number]> = [
+      [s.stores.wood, 1], [s.stores.fur, 1.5], [s.stores.meat, 1], [s.stores.iron, 2],
+      [s.stores.coal, 2], [s.stores.sulphur, 3], [s.stores.steel, 3], [s.stores.curedMeat, 2],
+      [s.stores.scales, 2], [s.stores.teeth, 2], [s.stores.leather, 2], [s.stores.bait, 1.5],
+      [s.stores.torch, 1], [s.stores.cloth, 1], [s.crafted.boneSpear ?? 0, 10],
+      [s.crafted.ironSword ?? 0, 30], [s.crafted.steelSword ?? 0, 50], [s.crafted.bayonet ?? 0, 100],
+      [s.crafted.rifle ?? 0, 150], [s.crafted.laserRifle ?? 0, 150], [s.stores.bullets, 3],
+      [s.stores.energyCell, 3], [s.stores.grenade, 5], [s.stores.bolas, 4],
+    ];
+    return Math.floor(weighted.reduce((total, [amount, factor]) => total + amount * factor, 0) + s.stores.alienAlloy * 10 + s.ship.hull * 50);
+  }
+
+  private drawEnding(): void {
+    this.root.add(label(this, W / 2, 210, '群星之间', 48).setOrigin(0.5).setFontStyle('bold'));
+    this.root.add(label(this, W / 2, 390, '星舰穿过最后一层碎片云。\n荒原在身后缩成一个暗点。', 30, COLORS.dim).setOrigin(0.5).setAlign('center'));
+    this.root.add(label(this, W / 2, 610, `本轮得分  ${this.state.score}`, 34, COLORS.good).setOrigin(0.5));
+    this.root.add(label(this, W / 2, 680, `累计得分  ${this.state.totalScore}`, 30).setOrigin(0.5));
+    const restart = button(this, W / 2, 860, 520, 90, '重新开始', () => {
+      const totalScore = this.state.totalScore;
+      clearState();
+      this.state = freshState();
+      this.state.totalScore = totalScore;
+      this.persist(false);
+      this.showView('room');
+    });
+    this.root.add(restart.root);
+  }
+
   private tick(): void {
     const s = this.state;
+    if (s.ship.inFlight && this.view === 'space') {
+      s.ship.altitude += 1;
+      this.spaceAltitudeText?.setText(`高度 ${s.ship.altitude}/60`);
+      if (s.ship.altitude >= 60) {
+        this.completeFlight();
+        return;
+      }
+    }
     if (s.gatherCooldown > 0) s.gatherCooldown -= 1;
     if (s.trapCooldown > 0) s.trapCooldown -= 1;
     if (s.fire > 0) {
