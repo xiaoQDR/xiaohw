@@ -2,27 +2,11 @@ import Phaser from 'phaser';
 import { BUILDINGS, CRAFTS, FIRE_NAMES, JOB_NAMES, JOB_PRODUCTION, RESOURCE_NAMES, TRADES } from '../game/data';
 import { clearState, freshState, loadState, saveState } from '../game/state';
 import type { BuildDefinition, Cost, CraftDefinition, Job, Resource, SaveState, TradeDefinition, ViewName } from '../game/types';
+import { getLandmark, getWorldTile, WORLD_RADIUS } from '../game/worldMap';
 import { button, COLORS, formatAmount, label, panel, type ButtonParts } from '../ui/components';
 
 const W = 1080;
 const H = 1920;
-
-interface Landmark {
-  x: number;
-  y: number;
-  icon: string;
-  name: string;
-  danger: number;
-  loot: Partial<Record<Resource, number>>;
-}
-
-const LANDMARKS: Landmark[] = [
-  { x: 3, y: -2, icon: 'H', name: '废弃小屋', danger: 8, loot: { curedMeat: 15, medicine: 1, cloth: 3 } },
-  { x: -4, y: 3, icon: 'F', name: '阴暗森林', danger: 10, loot: { wood: 80, fur: 20 } },
-  { x: 6, y: 4, icon: 'O', name: '旧哨站', danger: 14, loot: { iron: 30, medicine: 2 } },
-  { x: -7, y: -5, icon: 'M', name: '废弃矿井', danger: 18, loot: { iron: 60, coal: 60 } },
-  { x: 9, y: -8, icon: 'S', name: '坠毁星舰', danger: 28, loot: { steel: 80, charm: 3 } },
-];
 
 export class GameScene extends Phaser.Scene {
   private state!: SaveState;
@@ -318,10 +302,19 @@ export class GameScene extends Phaser.Scene {
     if (b.lodge) jobs.push('hunter', 'trapper');
     if (b.tannery) jobs.push('tanner');
     if (b.smokehouse) jobs.push('charcutier');
-    if (b.workshop) jobs.push('ironMiner', 'coalMiner', 'sulphurMiner');
+    if (this.hasClearedTile('I')) jobs.push('ironMiner');
+    if (this.hasClearedTile('C')) jobs.push('coalMiner');
+    if (this.hasClearedTile('S')) jobs.push('sulphurMiner');
     if (b.steelworks) jobs.push('steelworker');
     if (b.armoury) jobs.push('armourer');
     return jobs;
+  }
+
+  private hasClearedTile(tile: string): boolean {
+    return this.state.world.cleared.some(key => {
+      const [x, y] = key.split(',').map(Number);
+      return getWorldTile(this.state.world.map, x, y) === tile;
+    });
   }
 
   private drawJobsPage(root: Phaser.GameObjects.Container): void {
@@ -484,15 +477,16 @@ export class GameScene extends Phaser.Scene {
         const seen = world.visited.includes(key) || Math.abs(wx - world.x) + Math.abs(wy - world.y) <= 2;
         const current = wx === world.x && wy === world.y;
         const home = wx === 0 && wy === 0;
-        const landmark = LANDMARKS.find(l => l.x === wx && l.y === wy);
+        const tile = getWorldTile(world.map, wx, wy);
+        const landmark = getLandmark(tile);
         const cleared = world.cleared.includes(key);
         const x = ox + gx * cell;
         const y = oy + gy * cell;
         const bg = this.add.rectangle(x, y, cell - 4, cell - 4, current ? 0x34251f : seen ? 0x17191c : 0x101113)
           .setStrokeStyle(1, current ? COLORS.emberHex : 0x292c30);
-        let icon = seen ? '·' : ' ';
+        let icon = seen ? (tile ?? '·') : ' ';
         if (home && seen) icon = 'A';
-        if (landmark && seen) icon = cleared ? '✓' : landmark.icon;
+        if (landmark && seen) icon = cleared ? '✓' : landmark.tile;
         if (current) icon = '@';
         const txt = label(this, x, y, icon, current ? 28 : 22, current ? COLORS.ember : cleared ? COLORS.good : COLORS.text).setOrigin(0.5);
         gridRoot.add([bg, txt]);
@@ -566,6 +560,7 @@ export class GameScene extends Phaser.Scene {
   private moveWorld(dx: number, dy: number): void {
     const w = this.state.world;
     if (!w.active || this.activeEnemy) return;
+    if (Math.abs(w.x + dx) > WORLD_RADIUS || Math.abs(w.y + dy) > WORLD_RADIUS) return;
     w.x += dx; w.y += dy; w.steps += 1;
     if (w.steps % 2 === 0) w.food = Math.max(0, w.food - 1);
     w.water = Math.max(0, w.water - 1);
@@ -576,9 +571,9 @@ export class GameScene extends Phaser.Scene {
       this.collapse();
       return;
     }
-    const landmark = LANDMARKS.find(l => l.x === w.x && l.y === w.y && !w.cleared.includes(key));
-    if (landmark) {
-      this.startCombat(landmark.name, landmark.danger, landmark.loot, key);
+    const landmark = getLandmark(getWorldTile(w.map, w.x, w.y));
+    if (landmark && !w.cleared.includes(key)) {
+      this.startCombat(landmark.name, landmark.danger, this.getLandmarkLoot(landmark.tile), key);
       return;
     }
     const distance = Math.abs(w.x) + Math.abs(w.y);
@@ -589,6 +584,19 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.showView('world');
+  }
+
+  private getLandmarkLoot(tile: string): Partial<Record<Resource, number>> {
+    const loot: Record<string, Partial<Record<Resource, number>>> = {
+      I: { iron: 60, curedMeat: 5 }, C: { coal: 60, curedMeat: 5 }, S: { sulphur: 60, curedMeat: 5 },
+      H: { curedMeat: 10, cloth: 3, medicine: 1 }, V: { fur: 15, meat: 10, teeth: 2 },
+      O: { iron: 20, steel: 10, medicine: 2, bullets: 5 },
+      Y: { steel: 30, medicine: 4, bullets: 10, energyCell: 2 },
+      W: { steel: 50, alienAlloy: 1, energyCell: 5 }, B: { medicine: 3, iron: 20 },
+      F: { bullets: 20, grenade: 1, steel: 15 }, M: { medicine: 5, scales: 10, charm: 1 },
+      X: { alienAlloy: 2, energyCell: 10, steel: 50 },
+    };
+    return loot[tile] ?? {};
   }
 
   private startCombat(name: string, hp: number, loot: Partial<Record<Resource, number>>, landmarkKey?: string): void {

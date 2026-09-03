@@ -16,6 +16,7 @@ export type ViewName = 'room' | 'village' | 'world';
 export type ItemType = 'tool' | 'upgrade' | 'weapon' | 'good' | 'special';
 
 export interface WorldState {
+  map: string[][];
   x: number;
   y: number;
   hp: number;

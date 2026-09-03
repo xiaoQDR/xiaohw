@@ -1,4 +1,5 @@
 import type { Building, Job, Resource, SaveState } from './types';
+import { generateWorldMap } from './worldMap';
 
 const SAVE_KEY = 'xiaohw-phaser-save-v1';
 
@@ -39,7 +40,7 @@ export function freshState(): SaveState {
     crafted: {},
     builderArrived: false,
     worldUnlocked: false,
-    world: { x: 0, y: 0, hp: 10, maxHp: 10, food: 0, water: 0, steps: 0, active: false, visited: ['0,0'], cleared: [] },
+    world: { map: generateWorldMap(), x: 0, y: 0, hp: 10, maxHp: 10, food: 0, water: 0, steps: 0, active: false, visited: ['0,0'], cleared: [] },
     log: ['四周一片漆黑。', '空气冰冷。有人蜷缩在角落里。'],
   };
 }
@@ -54,14 +55,15 @@ export function loadState(): SaveState {
       migratedStores.curedMeat = migratedStores.food;
     }
     delete migratedStores.food;
+    const base = freshState();
     return {
-      ...freshState(),
+      ...base,
       ...saved,
       version: 2,
       stores: { ...resources(), ...migratedStores },
       buildings: { ...buildings(), ...saved.buildings },
       jobs: { ...jobs(), ...saved.jobs },
-      world: { ...freshState().world, ...saved.world },
+      world: { ...base.world, ...saved.world },
     };
   } catch {
     return freshState();
