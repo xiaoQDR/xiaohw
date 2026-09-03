@@ -55,6 +55,15 @@
     });
   }
 
+  function syncShell() {
+    if (window.parent === window) return;
+    window.parent.postMessage({ source: 'xiaohw-classic', type: 'title', value: document.title }, window.location.origin);
+    var language = new URLSearchParams(window.location.search).get('lang');
+    if (language) {
+      window.parent.postMessage({ source: 'xiaohw-classic', type: 'language', value: language }, window.location.origin);
+    }
+  }
+
   function pressDirection(event) {
     event.preventDefault();
     if (!isDirectionScene()) return;
@@ -102,6 +111,9 @@
     wrapper = document.getElementById('wrapper');
     fitGame();
     createDpad();
+    syncShell();
+    var title = document.querySelector('title');
+    if (title) new MutationObserver(syncShell).observe(title, { childList: true, characterData: true, subtree: true });
     window.addEventListener('resize', fitGame, { passive: true });
     window.addEventListener('orientationchange', fitGame, { passive: true });
     window.addEventListener('blur', releaseDirections);
