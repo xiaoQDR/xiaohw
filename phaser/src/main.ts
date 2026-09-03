@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import './style.css';
-import { GameScene } from './scenes/GameScene';
+import { ClassicScene } from './scenes/ClassicScene';
 
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -13,5 +13,5 @@ new Phaser.Game({
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [GameScene],
+  scene: [ClassicScene],
 });
