@@ -1,7 +1,19 @@
-export type Resource = 'wood' | 'food' | 'fur' | 'bait' | 'leather' | 'iron' | 'coal' | 'steel' | 'medicine' | 'charm';
-export type Building = 'trap' | 'cart' | 'hut' | 'lodge' | 'tradingPost' | 'tannery' | 'smokehouse' | 'workshop' | 'steelworks' | 'armoury';
-export type Job = 'gatherer' | 'hunter' | 'trapper' | 'tanner' | 'charcutier' | 'ironMiner' | 'coalMiner' | 'steelworker';
+export type Resource =
+  | 'wood' | 'fur' | 'meat' | 'bait' | 'leather' | 'curedMeat'
+  | 'iron' | 'coal' | 'sulphur' | 'steel' | 'medicine' | 'charm'
+  | 'scales' | 'teeth' | 'cloth' | 'torch' | 'bullets' | 'energyCell'
+  | 'grenade' | 'bolas' | 'alienAlloy';
+
+export type Building =
+  | 'trap' | 'cart' | 'hut' | 'lodge' | 'tradingPost'
+  | 'tannery' | 'smokehouse' | 'workshop' | 'steelworks' | 'armoury';
+
+export type Job =
+  | 'gatherer' | 'hunter' | 'trapper' | 'tanner' | 'charcutier'
+  | 'ironMiner' | 'coalMiner' | 'sulphurMiner' | 'steelworker' | 'armourer';
+
 export type ViewName = 'room' | 'village' | 'world';
+export type ItemType = 'tool' | 'upgrade' | 'weapon' | 'good' | 'special';
 
 export interface WorldState {
   x: number;
@@ -23,6 +35,8 @@ export interface SaveState {
   fire: number;
   fireSeconds: number;
   gatherCooldown: number;
+  trapCooldown: number;
+  productionTimer: number;
   population: number;
   nextArrival: number;
   stores: Record<Resource, number>;
@@ -44,7 +58,7 @@ export interface BuildDefinition {
   id: Building;
   name: string;
   description: string;
-  cost: Cost[];
+  cost: Cost[] | ((owned: number) => Cost[]);
   requires?: Building;
   max?: number;
 }
@@ -53,6 +67,18 @@ export interface CraftDefinition {
   id: string;
   name: string;
   description: string;
+  type: ItemType;
   cost: Cost[];
+  max?: number;
+  quantity?: number;
+  requires?: Building;
+}
+
+export interface TradeDefinition {
+  id: string;
+  name: string;
+  type: ItemType;
+  cost: Cost[];
+  quantity?: number;
   max?: number;
 }

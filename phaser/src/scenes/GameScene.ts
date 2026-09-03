@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { BUILDINGS, CRAFTS, FIRE_NAMES, JOB_NAMES, JOB_PRODUCTION, RESOURCE_NAMES } from '../game/data';
+import { BUILDINGS, CRAFTS, FIRE_NAMES, JOB_NAMES, JOB_PRODUCTION, RESOURCE_NAMES, TRADES } from '../game/data';
 import { clearState, freshState, loadState, saveState } from '../game/state';
-import type { BuildDefinition, CraftDefinition, Job, Resource, SaveState, ViewName } from '../game/types';
+import type { BuildDefinition, Cost, CraftDefinition, Job, Resource, SaveState, TradeDefinition, ViewName } from '../game/types';
 import { button, COLORS, formatAmount, label, panel, type ButtonParts } from '../ui/components';
 
 const W = 1080;
@@ -17,7 +17,7 @@ interface Landmark {
 }
 
 const LANDMARKS: Landmark[] = [
-  { x: 3, y: -2, icon: 'H', name: '废弃小屋', danger: 8, loot: { food: 15, medicine: 1 } },
+  { x: 3, y: -2, icon: 'H', name: '废弃小屋', danger: 8, loot: { curedMeat: 15, medicine: 1, cloth: 3 } },
   { x: -4, y: 3, icon: 'F', name: '阴暗森林', danger: 10, loot: { wood: 80, fur: 20 } },
   { x: 6, y: 4, icon: 'O', name: '旧哨站', danger: 14, loot: { iron: 30, medicine: 2 } },
   { x: -7, y: -5, icon: 'M', name: '废弃矿井', danger: 18, loot: { iron: 60, coal: 60 } },
@@ -28,6 +28,7 @@ export class GameScene extends Phaser.Scene {
   private state!: SaveState;
   private view: ViewName = 'room';
   private page = 0;
+  private subPage = 0;
   private root!: Phaser.GameObjects.Container;
   private nav!: Phaser.GameObjects.Container;
   private resourceText!: Phaser.GameObjects.Text;
@@ -121,6 +122,7 @@ export class GameScene extends Phaser.Scene {
     if (view === 'world' && !this.state.worldUnlocked) return;
     this.view = view;
     this.page = 0;
+    this.subPage = 0;
     this.root.removeAll(true);
     this.drawNav();
     if (view === 'room') this.drawRoom();
@@ -185,6 +187,12 @@ export class GameScene extends Phaser.Scene {
       this.root.add(wake.root);
     }
 
+    if (s.builderArrived && s.buildings.trap > 0) {
+      const traps = button(this, cx, 690, 900, 92, s.trapCooldown > 0 ? `检查陷阱 · ${s.trapCooldown}s` : '检查陷阱', () => this.checkTraps());
+      traps.setEnabled(s.trapCooldown <= 0);
+      this.root.add(traps.root);
+    }
+
     const logPanel = panel(this, cx, 1090, 972, 630, 0x111315);
     this.root.add(logPanel);
     this.root.add(label(this, 84, 810, '发生的事', 29).setFontStyle('bold'));
@@ -211,26 +219,53 @@ export class GameScene extends Phaser.Scene {
 
   private gatherWood(): void {
     if (this.state.gatherCooldown > 0) return;
-    const amount = this.state.buildings.cart ? 20 : 10;
+    const amount = this.state.buildings.cart ? 50 : 10;
     this.state.stores.wood += amount;
-    this.state.gatherCooldown = this.state.buildings.cart ? 6 : 10;
+    this.state.gatherCooldown = 60;
     this.addLog(`在林边捡到 ${amount} 根木材。`);
+    this.showView('room');
+  }
+
+  private checkTraps(): void {
+    const s = this.state;
+    if (s.trapCooldown > 0 || s.buildings.trap <= 0) return;
+    const baitUsed = Math.min(s.stores.bait, s.buildings.trap);
+    const rolls = s.buildings.trap + baitUsed;
+    const drops: Array<{ limit: number; resource: Resource; name: string }> = [
+      { limit: 0.5, resource: 'fur', name: '毛皮' },
+      { limit: 0.75, resource: 'meat', name: '肉' },
+      { limit: 0.85, resource: 'scales', name: '鳞片' },
+      { limit: 0.93, resource: 'teeth', name: '牙齿' },
+      { limit: 0.995, resource: 'cloth', name: '布料' },
+      { limit: 1, resource: 'charm', name: '护符' },
+    ];
+    const found = new Map<string, number>();
+    for (let i = 0; i < rolls; i += 1) {
+      const roll = Math.random();
+      const drop = drops.find(item => roll < item.limit) ?? drops[drops.length - 1];
+      s.stores[drop.resource] += 1;
+      found.set(drop.name, (found.get(drop.name) ?? 0) + 1);
+    }
+    s.stores.bait -= baitUsed;
+    s.trapCooldown = 90;
+    this.addLog(`陷阱里有${[...found].map(([name, amount]) => `${amount} ${name}`).join('、')}。`);
     this.showView('room');
   }
 
   private drawVillage(): void {
     const s = this.state;
     this.root.add(label(this, 54, 35, '寂静的村庄', 42).setFontStyle('bold'));
-    const capacity = 4 + s.buildings.hut * 4;
+    const capacity = Math.max(1, s.buildings.hut * 4);
     this.root.add(label(this, 54, 88, `人口 ${s.population}/${capacity}  ·  下位流浪者约 ${Math.max(0, s.nextArrival)} 秒后抵达`, 22, COLORS.dim));
 
     const tabs = [
       { name: '建造', page: 0 },
       { name: '分工', page: 1 },
       { name: '制作', page: 2 },
+      { name: '交易', page: 3 },
     ];
     tabs.forEach((item, index) => {
-      const b = button(this, 190 + index * 350, 175, 310, 74, item.name, () => { this.page = item.page; this.showVillagePage(); });
+      const b = button(this, 155 + index * 257, 175, 225, 74, item.name, () => { this.page = item.page; this.subPage = 0; this.showVillagePage(); });
       if (this.page === item.page) b.bg.setStrokeStyle(3, COLORS.emberHex);
       this.root.add(b.root);
     });
@@ -245,6 +280,7 @@ export class GameScene extends Phaser.Scene {
     if (this.page === 0) this.drawBuildingPage(pageRoot);
     if (this.page === 1) this.drawJobsPage(pageRoot);
     if (this.page === 2) this.drawCraftPage(pageRoot);
+    if (this.page === 3) this.drawTradePage(pageRoot);
   }
 
   private drawBuildingPage(root: Phaser.GameObjects.Container): void {
@@ -255,22 +291,24 @@ export class GameScene extends Phaser.Scene {
       const count = this.state.buildings[def.id];
       const title = label(this, 76, y - 18, `${def.name}${count ? ` ×${count}` : ''}`, 27);
       const desc = label(this, 76, y + 22, def.description, 20, COLORS.dim);
-      const cost = def.cost.filter(c => c.amount > 0).map(c => `${RESOURCE_NAMES[c.resource]} ${c.amount}`).join(' / ');
+      const actualCost = this.getBuildCost(def);
+      const cost = actualCost.filter(c => c.amount > 0).map(c => `${RESOURCE_NAMES[c.resource]} ${c.amount}`).join(' / ');
       const buy = button(this, 845, y, 310, 68, cost || '建造', () => this.build(def));
-      buy.setEnabled(this.canAfford(def.cost) && (!def.max || count < def.max));
+      buy.setEnabled(this.canAfford(actualCost) && (!def.max || count < def.max));
       root.add([bg, title, desc, buy.root]);
     });
   }
 
+  private getBuildCost(def: BuildDefinition): Cost[] {
+    return typeof def.cost === 'function' ? def.cost(this.state.buildings[def.id]) : def.cost;
+  }
+
   private build(def: BuildDefinition): void {
-    if (!this.canAfford(def.cost) || (def.max && this.state.buildings[def.id] >= def.max)) return;
-    this.pay(def.cost);
+    const cost = this.getBuildCost(def);
+    if (!this.canAfford(cost) || (def.max && this.state.buildings[def.id] >= def.max)) return;
+    this.pay(cost);
     this.state.buildings[def.id] += 1;
     this.addLog(`${def.name}建成了。村子显得没那么荒凉。`);
-    if (def.id === 'workshop') {
-      this.state.stores.iron += 20;
-      this.addLog('工坊废料里找到了一些铁。');
-    }
     this.showView('village');
   }
 
@@ -280,8 +318,9 @@ export class GameScene extends Phaser.Scene {
     if (b.lodge) jobs.push('hunter', 'trapper');
     if (b.tannery) jobs.push('tanner');
     if (b.smokehouse) jobs.push('charcutier');
-    if (b.workshop) jobs.push('ironMiner', 'coalMiner');
+    if (b.workshop) jobs.push('ironMiner', 'coalMiner', 'sulphurMiner');
     if (b.steelworks) jobs.push('steelworker');
+    if (b.armoury) jobs.push('armourer');
     return jobs;
   }
 
@@ -291,7 +330,7 @@ export class GameScene extends Phaser.Scene {
     this.availableJobs().forEach((job, index) => {
       const y = 110 + index * 126;
       const bg = panel(this, W / 2, y, 972, 104, index % 2 ? 0x121416 : 0x17191c);
-      const rates = Object.entries(JOB_PRODUCTION[job]).map(([r, value]) => `${RESOURCE_NAMES[r as Resource]} ${Number(value) >= 0 ? '+' : ''}${value}/秒`).join('  ');
+      const rates = Object.entries(JOB_PRODUCTION[job]).map(([r, value]) => `${RESOURCE_NAMES[r as Resource]} ${Number(value) >= 0 ? '+' : ''}${value}/10秒`).join('  ');
       const name = label(this, 76, y - 15, `${JOB_NAMES[job]}  ${this.state.jobs[job]}`, 27);
       const rate = label(this, 76, y + 24, rates, 19, COLORS.dim);
       const minus = button(this, 775, y, 86, 68, '－', () => this.changeJob(job, -1));
@@ -317,10 +356,13 @@ export class GameScene extends Phaser.Scene {
       root.add(label(this, W / 2, 150, '建造工坊后，才能制作远行装备。', 26, COLORS.dim).setOrigin(0.5));
       return;
     }
-    CRAFTS.forEach((def, index) => {
-      const y = 85 + index * 130;
+    const pageSize = 7;
+    const pageCount = Math.ceil(CRAFTS.length / pageSize);
+    const visible = CRAFTS.slice(this.subPage * pageSize, (this.subPage + 1) * pageSize);
+    visible.forEach((def, index) => {
+      const y = 85 + index * 150;
       const bg = panel(this, W / 2, y, 972, 110, index % 2 ? 0x121416 : 0x17191c);
-      const owned = this.state.crafted[def.id] ?? 0;
+      const owned = def.id === 'torch' ? this.state.stores.torch : this.state.crafted[def.id] ?? 0;
       const title = label(this, 76, y - 19, `${def.name}${owned ? ' · 已拥有' : ''}`, 27);
       const desc = label(this, 76, y + 22, def.description, 20, COLORS.dim);
       const cost = def.cost.map(c => `${RESOURCE_NAMES[c.resource]} ${c.amount}`).join(' / ');
@@ -328,22 +370,84 @@ export class GameScene extends Phaser.Scene {
       craft.setEnabled(this.canAfford(def.cost) && (!def.max || owned < def.max));
       root.add([bg, title, desc, craft.root]);
     });
+    this.drawPager(root, pageCount, 1175);
   }
 
   private craft(def: CraftDefinition): void {
-    const owned = this.state.crafted[def.id] ?? 0;
+    const owned = def.id === 'torch' ? this.state.stores.torch : this.state.crafted[def.id] ?? 0;
     if (!this.canAfford(def.cost) || (def.max && owned >= def.max)) return;
     this.pay(def.cost);
-    this.state.crafted[def.id] = owned + 1;
+    if (def.id === 'torch') {
+      this.state.stores.torch += def.quantity ?? 1;
+    } else {
+      this.state.crafted[def.id] = owned + (def.quantity ?? 1);
+    }
+    this.addLog(`${def.name}制作完成。`);
+    this.showView('village');
+    this.page = 2;
+    this.showVillagePage();
+  }
+
+  private drawTradePage(root: Phaser.GameObjects.Container): void {
+    if (!this.state.buildings.tradingPost) {
+      root.add(label(this, W / 2, 150, '建造交易站后，商队才会来到村庄。', 26, COLORS.dim).setOrigin(0.5));
+      return;
+    }
+    const pageSize = 7;
+    const pageCount = Math.ceil(TRADES.length / pageSize);
+    const visible = TRADES.slice(this.subPage * pageSize, (this.subPage + 1) * pageSize);
+    visible.forEach((def, index) => {
+      const y = 85 + index * 150;
+      const bg = panel(this, W / 2, y, 972, 110, index % 2 ? 0x121416 : 0x17191c);
+      const owned = this.getTradeOwned(def);
+      const title = label(this, 76, y - 19, `${def.name}${owned ? ` ×${formatAmount(owned)}` : ''}`, 27);
+      const cost = def.cost.map(c => `${RESOURCE_NAMES[c.resource]} ${c.amount}`).join(' / ');
+      const buy = button(this, 825, y, 350, 70, cost, () => this.trade(def));
+      buy.setEnabled(this.canAfford(def.cost) && (!def.max || owned < def.max));
+      root.add([bg, title, buy.root]);
+    });
+    this.drawPager(root, pageCount, 1175);
+  }
+
+  private getTradeOwned(def: TradeDefinition): number {
+    return def.id in this.state.stores
+      ? this.state.stores[def.id as Resource]
+      : this.state.crafted[def.id] ?? 0;
+  }
+
+  private trade(def: TradeDefinition): void {
+    const owned = this.getTradeOwned(def);
+    if (!this.canAfford(def.cost) || (def.max && owned >= def.max)) return;
+    this.pay(def.cost);
+    if (def.id in this.state.stores) {
+      this.state.stores[def.id as Resource] += def.quantity ?? 1;
+    } else {
+      this.state.crafted[def.id] = owned + (def.quantity ?? 1);
+    }
     if (def.id === 'compass') {
       this.state.worldUnlocked = true;
       this.addLog('罗盘指针颤动着，荒野不再是一团迷雾。');
     } else {
-      this.addLog(`${def.name}制作完成。`);
+      this.addLog(`商队交付了${def.name}。`);
     }
     this.showView('village');
-    this.page = 2;
+    this.page = 3;
     this.showVillagePage();
+  }
+
+  private drawPager(root: Phaser.GameObjects.Container, pageCount: number, y: number): void {
+    if (pageCount <= 1) return;
+    const previous = button(this, 335, y, 260, 70, '上一页', () => {
+      this.subPage = Math.max(0, this.subPage - 1);
+      this.showVillagePage();
+    });
+    const next = button(this, 745, y, 260, 70, '下一页', () => {
+      this.subPage = Math.min(pageCount - 1, this.subPage + 1);
+      this.showVillagePage();
+    });
+    previous.setEnabled(this.subPage > 0);
+    next.setEnabled(this.subPage < pageCount - 1);
+    root.add([previous.root, label(this, W / 2, y, `${this.subPage + 1} / ${pageCount}`, 22, COLORS.dim).setOrigin(0.5), next.root]);
   }
 
   private canAfford(cost: Array<{ resource: Resource; amount: number }>): boolean {
@@ -409,40 +513,61 @@ export class GameScene extends Phaser.Scene {
 
   private drawEmbark(): void {
     this.root.add(label(this, 54, 35, '踏入荒野', 42).setFontStyle('bold'));
-    const maxFood = this.state.crafted.rucksack ? 30 : 20;
-    const maxWater = this.state.crafted.waterskin ? 30 : 20;
-    const ready = this.state.stores.food >= maxFood;
+    const maxFood = this.getCarryCapacity();
+    const maxWater = this.getWaterCapacity();
+    const ready = this.state.stores.curedMeat >= maxFood;
     const p = panel(this, W / 2, 390, 972, 480);
     this.root.add(p);
     this.root.add(label(this, W / 2, 250, '尘土覆盖着村庄之外的一切。', 30).setOrigin(0.5));
-    this.root.add(label(this, W / 2, 320, '每移动一步消耗 1 份熏肉和 1 份水。\n带回地标中的物资，才能继续发展村庄。', 23, COLORS.dim).setOrigin(0.5).setAlign('center'));
+    this.root.add(label(this, W / 2, 320, '每移动两步消耗 1 份熏肉，每步消耗 1 份水。\n带回地标中的物资，才能继续发展村庄。', 23, COLORS.dim).setOrigin(0.5).setAlign('center'));
     this.root.add(label(this, W / 2, 450, `本次补给：熏肉 ${maxFood}  ·  水 ${maxWater}`, 26));
-    const go = button(this, W / 2, 590, 520, 90, ready ? '出发' : `还需要 ${Math.max(0, maxFood - Math.floor(this.state.stores.food))} 熏肉`, () => this.embark());
+    const go = button(this, W / 2, 590, 520, 90, ready ? '出发' : `还需要 ${Math.max(0, maxFood - Math.floor(this.state.stores.curedMeat))} 熏肉`, () => this.embark());
     go.setEnabled(ready);
     this.root.add(go.root);
   }
 
   private embark(): void {
-    const maxFood = this.state.crafted.rucksack ? 30 : 20;
-    if (this.state.stores.food < maxFood) return;
-    this.state.stores.food -= maxFood;
+    const maxFood = this.getCarryCapacity();
+    if (this.state.stores.curedMeat < maxFood) return;
+    this.state.stores.curedMeat -= maxFood;
     const world = this.state.world;
     world.active = true;
     world.x = 0; world.y = 0; world.steps = 0;
-    world.maxHp = this.state.crafted.charm ? 25 : 20;
+    world.maxHp = this.getMaxHealth();
     world.hp = world.maxHp;
     world.food = maxFood;
-    world.water = this.state.crafted.waterskin ? 30 : 20;
+    world.water = this.getWaterCapacity();
     world.visited = Array.from(new Set([...world.visited, '0,0']));
     this.addLog('带着有限的补给，旅人踏入荒野。');
     this.showView('world');
+  }
+
+  private getCarryCapacity(): number {
+    if (this.state.crafted.convoy) return 70;
+    if (this.state.crafted.wagon) return 40;
+    if (this.state.crafted.rucksack) return 20;
+    return 10;
+  }
+
+  private getWaterCapacity(): number {
+    if (this.state.crafted.waterTank) return 100;
+    if (this.state.crafted.cask) return 30;
+    if (this.state.crafted.waterskin) return 20;
+    return 10;
+  }
+
+  private getMaxHealth(): number {
+    if (this.state.crafted.sArmour) return 55;
+    if (this.state.crafted.iArmour) return 35;
+    if (this.state.crafted.lArmour) return 15;
+    return 10;
   }
 
   private moveWorld(dx: number, dy: number): void {
     const w = this.state.world;
     if (!w.active || this.activeEnemy) return;
     w.x += dx; w.y += dy; w.steps += 1;
-    w.food = Math.max(0, w.food - 1);
+    if (w.steps % 2 === 0) w.food = Math.max(0, w.food - 1);
     w.water = Math.max(0, w.water - 1);
     const key = `${w.x},${w.y}`;
     if (!w.visited.includes(key)) w.visited.push(key);
@@ -457,10 +582,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const distance = Math.abs(w.x) + Math.abs(w.y);
-    if (distance > 1 && Math.random() < 0.18) {
+    if (distance > 1 && Math.random() < 0.2) {
       const enemies = ['饥饿的野兽', '持刀的流浪者', '灰尘中的蜥蜴'];
       const danger = 6 + Math.min(16, Math.floor(distance * 1.3));
-      this.startCombat(Phaser.Utils.Array.GetRandom(enemies), danger, { food: 3 + Math.floor(distance / 2), fur: 2 });
+      this.startCombat(Phaser.Utils.Array.GetRandom(enemies), danger, { curedMeat: 3 + Math.floor(distance / 2), fur: 2 });
       return;
     }
     this.showView('world');
@@ -485,7 +610,7 @@ export class GameScene extends Phaser.Scene {
     const attack = button(this, W / 2, 550, 480, 96, '攻击', () => this.attack());
     attack.setEnabled(Date.now() >= this.attackReadyAt);
     this.root.add(attack.root);
-    this.root.add(label(this, W / 2, 650, this.state.crafted.rifle ? '旧步枪在黑暗中发出冷光。' : this.state.crafted.spear ? '紧握骨矛，等待破绽。' : '只能用拳头保护自己。', 22, COLORS.dim).setOrigin(0.5));
+    this.root.add(label(this, W / 2, 650, this.getWeaponDescription(), 22, COLORS.dim).setOrigin(0.5));
     const flee = button(this, W / 2, 810, 360, 72, '逃跑（失去 3 生命）', () => {
       w.hp -= 3;
       this.activeEnemy = null;
@@ -497,9 +622,12 @@ export class GameScene extends Phaser.Scene {
   private attack(): void {
     const enemy = this.activeEnemy;
     if (!enemy || Date.now() < this.attackReadyAt) return;
-    const damage = this.state.crafted.rifle ? 8 : this.state.crafted.spear ? 4 : 2;
+    const weapon = this.getWeapon();
+    if (weapon.ammo && this.state.stores[weapon.ammo] <= 0) return;
+    if (weapon.ammo) this.state.stores[weapon.ammo] -= 1;
+    const damage = Math.random() <= 0.8 ? weapon.damage : 0;
     enemy.hp -= damage;
-    this.attackReadyAt = Date.now() + (this.state.crafted.rifle ? 1100 : 750);
+    this.attackReadyAt = Date.now() + weapon.cooldown * 1000;
     if (enemy.hp <= 0) {
       Object.entries(enemy.loot).forEach(([key, value]) => { this.state.stores[key as Resource] += value ?? 0; });
       if (enemy.landmarkKey && !this.state.world.cleared.includes(enemy.landmarkKey)) this.state.world.cleared.push(enemy.landmarkKey);
@@ -509,6 +637,19 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.showView('world');
+  }
+
+  private getWeapon(): { name: string; damage: number; cooldown: number; ammo?: Resource } {
+    if (this.state.crafted.rifle && this.state.stores.bullets > 0) return { name: '步枪', damage: 5, cooldown: 1, ammo: 'bullets' };
+    if (this.state.crafted.steelSword) return { name: '钢剑', damage: 6, cooldown: 2 };
+    if (this.state.crafted.ironSword) return { name: '铁剑', damage: 4, cooldown: 2 };
+    if (this.state.crafted.boneSpear) return { name: '骨矛', damage: 2, cooldown: 2 };
+    return { name: '拳头', damage: 1, cooldown: 2 };
+  }
+
+  private getWeaponDescription(): string {
+    const weapon = this.getWeapon();
+    return `${weapon.name} · 伤害 ${weapon.damage} · 命中率 80%${weapon.ammo ? ` · ${RESOURCE_NAMES[weapon.ammo]} ${this.state.stores[weapon.ammo]}` : ''}`;
   }
 
   private collapse(): void {
@@ -530,6 +671,7 @@ export class GameScene extends Phaser.Scene {
   private tick(): void {
     const s = this.state;
     if (s.gatherCooldown > 0) s.gatherCooldown -= 1;
+    if (s.trapCooldown > 0) s.trapCooldown -= 1;
     if (s.fire > 0) {
       s.fireSeconds -= 1;
       if (s.fireSeconds <= 0) {
@@ -538,7 +680,11 @@ export class GameScene extends Phaser.Scene {
         this.addLog(s.fire ? '火势渐渐弱了。' : '火熄灭了。');
       }
     }
-    this.produce();
+    s.productionTimer -= 1;
+    if (s.productionTimer <= 0) {
+      this.produce();
+      s.productionTimer = 10;
+    }
     this.handlePopulation();
     this.handleEnemyAttack();
     this.refreshHeader();
@@ -549,29 +695,29 @@ export class GameScene extends Phaser.Scene {
     (Object.keys(this.state.jobs) as Job[]).forEach(job => {
       const workers = this.state.jobs[job];
       if (!workers) return;
-      Object.entries(JOB_PRODUCTION[job]).forEach(([key, rate]) => {
-        const resource = key as Resource;
-        const delta = (rate ?? 0) * workers;
-        if (delta < 0 && this.state.stores[resource] < Math.abs(delta)) return;
+      const changes = Object.entries(JOB_PRODUCTION[job]).map(([key, rate]) => ({
+        resource: key as Resource,
+        delta: (rate ?? 0) * workers,
+      }));
+      if (!changes.every(change => change.delta >= 0 || this.state.stores[change.resource] >= Math.abs(change.delta))) return;
+      changes.forEach(({ resource, delta }) => {
         this.state.stores[resource] = Math.max(0, this.state.stores[resource] + delta);
       });
     });
-    if (this.state.buildings.trap > 0 && Date.now() % 10_000 < 1000) {
-      this.state.stores.fur += this.state.buildings.trap * 0.5;
-      this.state.stores.food += this.state.buildings.trap * 0.5;
-    }
   }
 
   private handlePopulation(): void {
     if (!this.state.builderArrived) return;
-    const capacity = 4 + this.state.buildings.hut * 4;
+    const capacity = Math.max(1, this.state.buildings.hut * 4);
     if (this.state.population >= capacity) return;
     this.state.nextArrival -= 1;
     if (this.state.nextArrival <= 0) {
-      this.state.population += 1;
-      this.state.jobs.gatherer += 1;
-      this.state.nextArrival = Math.max(12, 32 - this.state.buildings.hut);
-      this.addLog('又一位流浪者来到火光边。');
+      const space = capacity - this.state.population;
+      const arrivals = Math.max(1, Math.floor(Math.random() * (space / 2) + space / 2));
+      this.state.population += arrivals;
+      this.state.jobs.gatherer += arrivals;
+      this.state.nextArrival = Phaser.Math.Between(30, 180);
+      this.addLog(arrivals === 1 ? '一位陌生人在夜里抵达。' : `${arrivals} 位疲惫的流浪者来到村庄。`);
     }
   }
 
