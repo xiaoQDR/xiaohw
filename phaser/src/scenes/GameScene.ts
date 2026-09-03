@@ -8,6 +8,54 @@ import { button, COLORS, formatAmount, label, panel, type ButtonParts } from '..
 const W = 1080;
 const H = 1920;
 
+interface WeaponDefinition {
+  id: string;
+  name: string;
+  damage: number | 'stun';
+  cooldown: number;
+  ammo?: Resource;
+  permanent?: string;
+}
+
+interface PendingLandmark {
+  tile: string;
+  key: string;
+  name: string;
+  danger: number;
+  stage: 'intro' | 'reward';
+  loot: Partial<Record<Resource, number>>;
+}
+
+const LANDMARK_TEXT: Record<string, { intro: string; approach: string; cleared: string }> = {
+  I: { intro: '矿道里传来金属摩擦声。', approach: '进入铁矿', cleared: '矿脉重新暴露在昏暗天光下。' },
+  C: { intro: '黑色尘埃从废弃矿井中飘出。', approach: '进入煤矿', cleared: '煤层仍然足够村庄开采很久。' },
+  S: { intro: '空气中弥漫着刺鼻的硫磺味。', approach: '进入硫磺矿', cleared: '矿井被清理，硫磺可以运回村庄。' },
+  H: { intro: '一间老屋歪斜地立在荒地上。', approach: '推门进入', cleared: '屋里只剩尘土和可以带走的物资。' },
+  V: { intro: '洞穴深处有东西在潮湿岩壁间移动。', approach: '点燃火把进入', cleared: '回声停了，洞穴归于寂静。' },
+  O: { intro: '倒塌的街道延伸进废弃城镇。', approach: '搜索城镇', cleared: '最后的抵抗者倒下，街道可以安全穿行。' },
+  Y: { intro: '高楼的空洞窗户俯视着旅人。', approach: '进入城市', cleared: '城市废墟中仍残留着旧时代的技术。' },
+  W: { intro: '一艘星舰裂开在尘土中，船体仍有微弱脉冲。', approach: '登上星舰', cleared: '驾驶舱还活着。它也许能再次飞行。' },
+  B: { intro: '巨大的钻井直通看不见底的黑暗。', approach: '沿平台下降', cleared: '机械停止转动，只剩可回收的零件。' },
+  F: { intro: '锈蚀武器散落在一片无名战场上。', approach: '穿过战场', cleared: '风吹过空荡的战壕。' },
+  M: { intro: '浑浊沼泽冒着气泡，芦苇后有影子。', approach: '涉入沼泽', cleared: '沼泽重新安静下来。' },
+  X: { intro: '受创战舰横卧荒野，陌生信号从内部重复发出。', approach: '进入战舰', cleared: '异星舰桥向旅人开放。' },
+};
+
+const WEAPONS: WeaponDefinition[] = [
+  { id: 'fists', name: '拳击', damage: 1, cooldown: 2 },
+  { id: 'boneSpear', name: '刺击', damage: 2, cooldown: 2, permanent: 'boneSpear' },
+  { id: 'ironSword', name: '挥砍', damage: 4, cooldown: 2, permanent: 'ironSword' },
+  { id: 'steelSword', name: '斩击', damage: 6, cooldown: 2, permanent: 'steelSword' },
+  { id: 'bayonet', name: '突刺', damage: 8, cooldown: 2, permanent: 'bayonet' },
+  { id: 'rifle', name: '射击', damage: 5, cooldown: 1, permanent: 'rifle', ammo: 'bullets' },
+  { id: 'laserRifle', name: '激光', damage: 8, cooldown: 1, permanent: 'laserRifle', ammo: 'energyCell' },
+  { id: 'grenade', name: '投弹', damage: 15, cooldown: 5, ammo: 'grenade' },
+  { id: 'bolas', name: '缠绕', damage: 'stun', cooldown: 15, ammo: 'bolas' },
+  { id: 'plasmaRifle', name: '解离', damage: 12, cooldown: 1, permanent: 'plasmaRifle', ammo: 'energyCell' },
+  { id: 'energyBlade', name: '切割', damage: 10, cooldown: 2, permanent: 'energyBlade' },
+  { id: 'disruptor', name: '眩晕', damage: 'stun', cooldown: 15, permanent: 'disruptor' },
+];
+
 export class GameScene extends Phaser.Scene {
   private state!: SaveState;
   private view: ViewName = 'room';
@@ -18,8 +66,9 @@ export class GameScene extends Phaser.Scene {
   private resourceText!: Phaser.GameObjects.Text;
   private clockText!: Phaser.GameObjects.Text;
   private saveText!: Phaser.GameObjects.Text;
-  private activeEnemy: { name: string; hp: number; maxHp: number; damage: number; nextAttack: number; loot: Partial<Record<Resource, number>>; landmarkKey?: string } | null = null;
-  private attackReadyAt = 0;
+  private activeEnemy: { name: string; hp: number; maxHp: number; damage: number; nextAttack: number; stunnedUntil: number; loot: Partial<Record<Resource, number>>; landmarkKey?: string } | null = null;
+  private actionReadyAt: Record<string, number> = {};
+  private pendingLandmark: PendingLandmark | null = null;
 
   constructor() {
     super('game');
@@ -460,6 +509,10 @@ export class GameScene extends Phaser.Scene {
       this.drawCombat();
       return;
     }
+    if (this.pendingLandmark) {
+      this.drawLandmarkEvent();
+      return;
+    }
     const world = this.state.world;
     this.root.add(label(this, 54, 35, '无声的荒野', 42).setFontStyle('bold'));
     this.root.add(label(this, 54, 90, `生命 ${world.hp}/${world.maxHp}   熏肉 ${world.food}   水 ${world.water}   行程 ${world.steps}`, 23, COLORS.dim));
@@ -573,7 +626,15 @@ export class GameScene extends Phaser.Scene {
     }
     const landmark = getLandmark(getWorldTile(w.map, w.x, w.y));
     if (landmark && !w.cleared.includes(key)) {
-      this.startCombat(landmark.name, landmark.danger, this.getLandmarkLoot(landmark.tile), key);
+      this.pendingLandmark = {
+        tile: landmark.tile,
+        key,
+        name: landmark.name,
+        danger: landmark.danger,
+        stage: 'intro',
+        loot: this.getLandmarkLoot(landmark.tile),
+      };
+      this.showView('world');
       return;
     }
     const distance = Math.abs(w.x) + Math.abs(w.y);
@@ -583,6 +644,55 @@ export class GameScene extends Phaser.Scene {
       this.startCombat(Phaser.Utils.Array.GetRandom(enemies), danger, { curedMeat: 3 + Math.floor(distance / 2), fur: 2 });
       return;
     }
+    this.showView('world');
+  }
+
+  private drawLandmarkEvent(): void {
+    const event = this.pendingLandmark;
+    if (!event) return;
+    const text = LANDMARK_TEXT[event.tile] ?? { intro: event.name, approach: '探索', cleared: '这里已经安全。' };
+    this.root.add(label(this, 54, 35, event.name, 42).setFontStyle('bold'));
+    const eventPanel = panel(this, W / 2, 480, 972, 700, 0x151315);
+    this.root.add(eventPanel);
+    if (event.stage === 'intro') {
+      this.root.add(label(this, W / 2, 270, text.intro, 28, COLORS.dim).setOrigin(0.5).setWordWrapWidth(820).setAlign('center'));
+      const needsTorch = event.tile === 'V' && this.state.stores.torch <= 0;
+      const enter = button(this, W / 2, 470, 560, 92, needsTorch ? '需要一支火把' : text.approach, () => this.enterLandmark());
+      enter.setEnabled(!needsTorch);
+      const leave = button(this, W / 2, 610, 420, 74, '暂时离开', () => {
+        this.pendingLandmark = null;
+        this.showView('world');
+      });
+      this.root.add([enter.root, leave.root]);
+      return;
+    }
+
+    this.root.add(label(this, W / 2, 255, text.cleared, 28, COLORS.dim).setOrigin(0.5).setWordWrapWidth(820).setAlign('center'));
+    const lootText = Object.entries(event.loot).map(([resource, amount]) => `${RESOURCE_NAMES[resource as Resource]} ${amount}`).join('  ·  ');
+    this.root.add(label(this, W / 2, 390, lootText || '没有找到可以带走的东西', 25, COLORS.good).setOrigin(0.5).setWordWrapWidth(820).setAlign('center'));
+    const take = button(this, W / 2, 570, 560, 92, '带走物资', () => this.finishLandmark());
+    this.root.add(take.root);
+  }
+
+  private enterLandmark(): void {
+    const event = this.pendingLandmark;
+    if (!event || event.stage !== 'intro') return;
+    if (event.tile === 'V') {
+      if (this.state.stores.torch <= 0) return;
+      this.state.stores.torch -= 1;
+    }
+    this.startCombat(event.name, event.danger, event.loot, event.key);
+  }
+
+  private finishLandmark(): void {
+    const event = this.pendingLandmark;
+    if (!event || event.stage !== 'reward') return;
+    Object.entries(event.loot).forEach(([resource, amount]) => {
+      this.state.stores[resource as Resource] += amount ?? 0;
+    });
+    if (!this.state.world.cleared.includes(event.key)) this.state.world.cleared.push(event.key);
+    this.addLog(`${event.name}已经清理，物资被带回行囊。`);
+    this.pendingLandmark = null;
     this.showView('world');
   }
 
@@ -600,8 +710,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startCombat(name: string, hp: number, loot: Partial<Record<Resource, number>>, landmarkKey?: string): void {
-    this.activeEnemy = { name, hp, maxHp: hp, damage: Math.max(1, Math.floor(hp / 7)), nextAttack: Date.now() + 1600, loot, landmarkKey };
-    this.attackReadyAt = 0;
+    this.activeEnemy = { name, hp, maxHp: hp, damage: Math.max(1, Math.floor(hp / 7)), nextAttack: Date.now() + 1600, stunnedUntil: 0, loot, landmarkKey };
+    this.actionReadyAt = {};
     this.showView('world');
   }
 
@@ -610,60 +720,102 @@ export class GameScene extends Phaser.Scene {
     if (!enemy) return;
     const w = this.state.world;
     this.root.add(label(this, 54, 35, '遭遇', 42, COLORS.danger).setFontStyle('bold'));
-    const p = panel(this, W / 2, 450, 972, 630, 0x151315);
+    const p = panel(this, W / 2, 680, 972, 1080, 0x151315);
     this.root.add(p);
-    this.root.add(label(this, W / 2, 250, enemy.name, 38).setOrigin(0.5));
-    this.root.add(label(this, W / 2, 330, `敌人  ${enemy.hp}/${enemy.maxHp}`, 27, COLORS.danger).setOrigin(0.5));
-    this.root.add(label(this, W / 2, 385, `旅人  ${w.hp}/${w.maxHp}`, 27, COLORS.good).setOrigin(0.5));
-    const attack = button(this, W / 2, 550, 480, 96, '攻击', () => this.attack());
-    attack.setEnabled(Date.now() >= this.attackReadyAt);
-    this.root.add(attack.root);
-    this.root.add(label(this, W / 2, 650, this.getWeaponDescription(), 22, COLORS.dim).setOrigin(0.5));
-    const flee = button(this, W / 2, 810, 360, 72, '逃跑（失去 3 生命）', () => {
+    this.root.add(label(this, W / 2, 210, enemy.name, 38).setOrigin(0.5));
+    this.root.add(label(this, W / 2, 275, `敌人  ${enemy.hp}/${enemy.maxHp}${enemy.stunnedUntil > Date.now() ? ' · 眩晕' : ''}`, 27, COLORS.danger).setOrigin(0.5));
+    this.root.add(label(this, W / 2, 325, `旅人  ${w.hp}/${w.maxHp}`, 27, COLORS.good).setOrigin(0.5));
+    this.root.add(label(this, 82, 390, '武器', 25).setFontStyle('bold'));
+
+    const weapons = this.getAvailableWeapons();
+    weapons.forEach((weapon, index) => {
+      const column = index % 2;
+      const row = Math.floor(index / 2);
+      const x = column ? 795 : 285;
+      const y = 465 + row * 104;
+      const readyIn = Math.max(0, Math.ceil(((this.actionReadyAt[weapon.id] ?? 0) - Date.now()) / 1000));
+      const ammo = weapon.ammo ? ` · ${RESOURCE_NAMES[weapon.ammo]} ${formatAmount(this.state.stores[weapon.ammo])}` : '';
+      const damage = weapon.damage === 'stun' ? '眩晕' : `${weapon.damage} 伤害`;
+      const attack = button(this, x, y, 430, 78, `${weapon.name} · ${damage}${readyIn ? ` · ${readyIn}s` : ammo}`, () => this.attack(weapon));
+      attack.setEnabled(readyIn <= 0 && (!weapon.ammo || this.state.stores[weapon.ammo] > 0));
+      this.root.add(attack.root);
+    });
+
+    const healY = 465 + Math.ceil(weapons.length / 2) * 104 + 40;
+    this.root.add(label(this, 82, healY, '恢复', 25).setFontStyle('bold'));
+    const meatReady = Math.max(0, Math.ceil(((this.actionReadyAt.meat ?? 0) - Date.now()) / 1000));
+    const eat = button(this, 285, healY + 80, 430, 78, `吃熏肉 · +8${meatReady ? ` · ${meatReady}s` : ` · 剩余 ${w.food}`}`, () => this.heal('meat'));
+    eat.setEnabled(w.food > 0 && w.hp < w.maxHp && meatReady <= 0);
+    const medsReady = Math.max(0, Math.ceil(((this.actionReadyAt.medicine ?? 0) - Date.now()) / 1000));
+    const meds = button(this, 795, healY + 80, 430, 78, `使用药剂 · +20${medsReady ? ` · ${medsReady}s` : ` · 库存 ${formatAmount(this.state.stores.medicine)}`}`, () => this.heal('medicine'));
+    meds.setEnabled(this.state.stores.medicine > 0 && w.hp < w.maxHp && medsReady <= 0);
+    this.root.add([eat.root, meds.root]);
+
+    const flee = button(this, W / 2, Math.min(1450, healY + 205), 420, 72, '逃跑（失去 3 生命）', () => {
       w.hp -= 3;
       this.activeEnemy = null;
+      this.pendingLandmark = null;
       if (w.hp <= 0) this.collapse(); else this.showView('world');
     });
     this.root.add(flee.root);
   }
 
-  private attack(): void {
+  private attack(weapon: WeaponDefinition): void {
     const enemy = this.activeEnemy;
-    if (!enemy || Date.now() < this.attackReadyAt) return;
-    const weapon = this.getWeapon();
+    if (!enemy || Date.now() < (this.actionReadyAt[weapon.id] ?? 0)) return;
     if (weapon.ammo && this.state.stores[weapon.ammo] <= 0) return;
     if (weapon.ammo) this.state.stores[weapon.ammo] -= 1;
-    const damage = Math.random() <= 0.8 ? weapon.damage : 0;
-    enemy.hp -= damage;
-    this.attackReadyAt = Date.now() + weapon.cooldown * 1000;
+    if (weapon.damage === 'stun') {
+      enemy.stunnedUntil = Date.now() + 4000;
+    } else if (Math.random() <= 0.8) {
+      enemy.hp -= weapon.damage;
+    }
+    this.actionReadyAt[weapon.id] = Date.now() + weapon.cooldown * 1000;
     if (enemy.hp <= 0) {
-      Object.entries(enemy.loot).forEach(([key, value]) => { this.state.stores[key as Resource] += value ?? 0; });
-      if (enemy.landmarkKey && !this.state.world.cleared.includes(enemy.landmarkKey)) this.state.world.cleared.push(enemy.landmarkKey);
-      this.addLog(`从${enemy.name}带回了有用的物资。`);
       this.activeEnemy = null;
+      if (enemy.landmarkKey && this.pendingLandmark?.key === enemy.landmarkKey) {
+        this.pendingLandmark.stage = 'reward';
+      } else {
+        Object.entries(enemy.loot).forEach(([key, value]) => { this.state.stores[key as Resource] += value ?? 0; });
+        this.addLog(`从${enemy.name}身上搜到了一些物资。`);
+      }
       this.showView('world');
       return;
     }
     this.showView('world');
   }
 
-  private getWeapon(): { name: string; damage: number; cooldown: number; ammo?: Resource } {
-    if (this.state.crafted.rifle && this.state.stores.bullets > 0) return { name: '步枪', damage: 5, cooldown: 1, ammo: 'bullets' };
-    if (this.state.crafted.steelSword) return { name: '钢剑', damage: 6, cooldown: 2 };
-    if (this.state.crafted.ironSword) return { name: '铁剑', damage: 4, cooldown: 2 };
-    if (this.state.crafted.boneSpear) return { name: '骨矛', damage: 2, cooldown: 2 };
-    return { name: '拳头', damage: 1, cooldown: 2 };
+  private getAvailableWeapons(): WeaponDefinition[] {
+    const owned = WEAPONS.filter(weapon => {
+      if (weapon.id === 'fists') return false;
+      if (weapon.permanent) return (this.state.crafted[weapon.permanent] ?? 0) > 0;
+      return weapon.ammo ? this.state.stores[weapon.ammo] > 0 : false;
+    });
+    return owned.length ? owned : [WEAPONS[0]];
   }
 
-  private getWeaponDescription(): string {
-    const weapon = this.getWeapon();
-    return `${weapon.name} · 伤害 ${weapon.damage} · 命中率 80%${weapon.ammo ? ` · ${RESOURCE_NAMES[weapon.ammo]} ${this.state.stores[weapon.ammo]}` : ''}`;
+  private heal(kind: 'meat' | 'medicine'): void {
+    const world = this.state.world;
+    if (world.hp >= world.maxHp) return;
+    if (kind === 'meat') {
+      if (world.food <= 0 || Date.now() < (this.actionReadyAt.meat ?? 0)) return;
+      world.food -= 1;
+      world.hp = Math.min(world.maxHp, world.hp + 8);
+      this.actionReadyAt.meat = Date.now() + 5000;
+    } else {
+      if (this.state.stores.medicine <= 0 || Date.now() < (this.actionReadyAt.medicine ?? 0)) return;
+      this.state.stores.medicine -= 1;
+      world.hp = Math.min(world.maxHp, world.hp + 20);
+      this.actionReadyAt.medicine = Date.now() + 7000;
+    }
+    this.showView('world');
   }
 
   private collapse(): void {
     const w = this.state.world;
     w.active = false; w.x = 0; w.y = 0; w.hp = w.maxHp; w.food = 0; w.water = 0;
     this.activeEnemy = null;
+    this.pendingLandmark = null;
     this.addLog('旅人在荒野中倒下，醒来时已回到火堆旁。');
     this.showView('room');
   }
@@ -671,6 +823,7 @@ export class GameScene extends Phaser.Scene {
   private returnHome(): void {
     const w = this.state.world;
     w.active = false; w.x = 0; w.y = 0;
+    this.pendingLandmark = null;
     this.addLog('旅人回到了村庄。');
     this.persist(false);
     this.showView('village');
@@ -732,6 +885,7 @@ export class GameScene extends Phaser.Scene {
   private handleEnemyAttack(): void {
     const enemy = this.activeEnemy;
     if (!enemy || Date.now() < enemy.nextAttack) return;
+    if (Date.now() < enemy.stunnedUntil) return;
     this.state.world.hp -= enemy.damage;
     enemy.nextAttack = Date.now() + 1600;
     if (this.state.world.hp <= 0) this.collapse();
