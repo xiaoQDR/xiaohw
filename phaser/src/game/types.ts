@@ -39,6 +39,8 @@ export interface WorldState {
   map: string[][];
   pendingLandmark: LandmarkEventState | null;
   activeEnemy: EnemyState | null;
+  loadout: Record<string, number>;
+  outfit: Record<string, number>;
   x: number;
   y: number;
   hp: number;

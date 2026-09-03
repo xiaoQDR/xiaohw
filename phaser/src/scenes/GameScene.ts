@@ -55,6 +55,35 @@ const LANDMARK_AUDIO: Record<string, string> = {
   B: 'landmark-borehole', F: 'landmark-battlefield', M: 'landmark-swamp', X: 'landmark-crashed-ship',
 };
 
+interface LoadoutItem {
+  id: string;
+  name: string;
+  weight: number;
+  resource?: Resource;
+  crafted?: string;
+}
+
+const LOADOUT_ITEMS: LoadoutItem[] = [
+  { id: 'curedMeat', name: '熏肉', weight: 1, resource: 'curedMeat' },
+  { id: 'medicine', name: '药剂', weight: 1, resource: 'medicine' },
+  { id: 'boneSpear', name: '骨矛', weight: 2, crafted: 'boneSpear' },
+  { id: 'ironSword', name: '铁剑', weight: 3, crafted: 'ironSword' },
+  { id: 'steelSword', name: '钢剑', weight: 5, crafted: 'steelSword' },
+  { id: 'bayonet', name: '刺刀', weight: 1, crafted: 'bayonet' },
+  { id: 'rifle', name: '步枪', weight: 5, crafted: 'rifle' },
+  { id: 'laserRifle', name: '激光步枪', weight: 5, crafted: 'laserRifle' },
+  { id: 'plasmaRifle', name: '等离子步枪', weight: 5, crafted: 'plasmaRifle' },
+  { id: 'energyBlade', name: '能量刃', weight: 1, crafted: 'energyBlade' },
+  { id: 'disruptor', name: '干扰器', weight: 1, crafted: 'disruptor' },
+  { id: 'bullets', name: '子弹', weight: 0.1, resource: 'bullets' },
+  { id: 'energyCell', name: '能量电池', weight: 0.2, resource: 'energyCell' },
+  { id: 'grenade', name: '手榴弹', weight: 1, resource: 'grenade' },
+  { id: 'bolas', name: '套索', weight: 0.5, resource: 'bolas' },
+  { id: 'torch', name: '火把', weight: 1, resource: 'torch' },
+  { id: 'charm', name: '护符', weight: 1, resource: 'charm' },
+  { id: 'alienAlloy', name: '外星合金', weight: 1, resource: 'alienAlloy' },
+];
+
 const WEAPONS: WeaponDefinition[] = [
   { id: 'fists', name: '拳击', damage: 1, cooldown: 2 },
   { id: 'boneSpear', name: '刺击', damage: 2, cooldown: 2, permanent: 'boneSpear' },
@@ -563,7 +592,7 @@ export class GameScene extends Phaser.Scene {
     }
     const world = this.state.world;
     this.root.add(label(this, 54, 35, '无声的荒野', 42).setFontStyle('bold'));
-    this.root.add(label(this, 54, 90, `生命 ${world.hp}/${world.maxHp}   熏肉 ${world.food}   水 ${world.water}   行程 ${world.steps}`, 23, COLORS.dim));
+    this.root.add(label(this, 54, 90, `生命 ${world.hp}/${world.maxHp}   熏肉 ${world.food}   水 ${world.water}   行囊 ${formatAmount(this.getActiveCarryWeight())}/${this.getCarryCapacity()}   行程 ${world.steps}`, 23, COLORS.dim));
     const gridRoot = this.add.container(0, 160);
     this.root.add(gridRoot);
     const gridSize = 13;
@@ -608,34 +637,126 @@ export class GameScene extends Phaser.Scene {
 
   private drawEmbark(): void {
     this.root.add(label(this, 54, 35, '踏入荒野', 42).setFontStyle('bold'));
-    const maxFood = this.getCarryCapacity();
+    const capacity = this.getCarryCapacity();
     const maxWater = this.getWaterCapacity();
-    const ready = this.state.stores.curedMeat >= maxFood;
-    const p = panel(this, W / 2, 390, 972, 480);
+    const used = this.getLoadoutWeight();
+    const ready = (this.state.world.loadout.curedMeat ?? 0) > 0;
+    const p = panel(this, W / 2, 700, 972, 1120);
     this.root.add(p);
-    this.root.add(label(this, W / 2, 250, '尘土覆盖着村庄之外的一切。', 30).setOrigin(0.5));
-    this.root.add(label(this, W / 2, 320, '每移动两步消耗 1 份熏肉，每步消耗 1 份水。\n带回地标中的物资，才能继续发展村庄。', 23, COLORS.dim).setOrigin(0.5).setAlign('center'));
-    this.root.add(label(this, W / 2, 450, `本次补给：熏肉 ${maxFood}  ·  水 ${maxWater}`, 26));
-    const go = button(this, W / 2, 590, 520, 90, ready ? '出发' : `还需要 ${Math.max(0, maxFood - Math.floor(this.state.stores.curedMeat))} 熏肉`, () => this.embark());
+    this.root.add(label(this, W / 2, 180, `行囊 ${formatAmount(used)}/${capacity}  ·  水 ${maxWater}  ·  生命 ${this.getMaxHealth()}`, 25, COLORS.dim).setOrigin(0.5));
+    const available = LOADOUT_ITEMS.filter(item => this.getLoadoutAvailable(item) > 0 || (this.state.world.loadout[item.id] ?? 0) > 0);
+    const pageSize = 7;
+    const pages = Math.max(1, Math.ceil(available.length / pageSize));
+    this.subPage = Math.min(this.subPage, pages - 1);
+    available.slice(this.subPage * pageSize, (this.subPage + 1) * pageSize).forEach((item, index) => {
+      const y = 270 + index * 112;
+      const amount = this.state.world.loadout[item.id] ?? 0;
+      const have = this.getLoadoutAvailable(item);
+      this.root.add(label(this, 82, y - 15, item.name, 25));
+      this.root.add(label(this, 82, y + 22, `重量 ${item.weight}  ·  库存 ${formatAmount(have)}`, 18, COLORS.dim));
+      const downMany = button(this, 625, y, 84, 62, '−10', () => this.changeLoadout(item, -10));
+      const down = button(this, 720, y, 72, 62, '−', () => this.changeLoadout(item, -1));
+      const value = label(this, 815, y, formatAmount(amount), 24).setOrigin(0.5);
+      const up = button(this, 905, y, 72, 62, '+', () => this.changeLoadout(item, 1));
+      const upMany = button(this, 1000, y, 84, 62, '+10', () => this.changeLoadout(item, 10));
+      downMany.setEnabled(amount > 0); down.setEnabled(amount > 0);
+      up.setEnabled(have > amount && used + item.weight <= capacity);
+      upMany.setEnabled(have > amount && used + item.weight <= capacity);
+      this.root.add([downMany.root, down.root, value, up.root, upMany.root]);
+    });
+    if (pages > 1) {
+      const prev = button(this, 280, 1085, 230, 66, '上一页', () => { this.subPage -= 1; this.redrawWorld(); });
+      const next = button(this, 800, 1085, 230, 66, '下一页', () => { this.subPage += 1; this.redrawWorld(); });
+      prev.setEnabled(this.subPage > 0); next.setEnabled(this.subPage < pages - 1);
+      this.root.add([prev.root, label(this, W / 2, 1085, `${this.subPage + 1}/${pages}`, 21, COLORS.dim).setOrigin(0.5), next.root]);
+    }
+    const go = button(this, W / 2, 1240, 520, 90, ready ? '出发' : '至少携带 1 份熏肉', () => this.embark());
     go.setEnabled(ready);
     this.root.add(go.root);
   }
 
   private embark(): void {
-    const maxFood = this.getCarryCapacity();
-    if (this.state.stores.curedMeat < maxFood) return;
-    this.state.stores.curedMeat -= maxFood;
     const world = this.state.world;
+    if ((world.loadout.curedMeat ?? 0) <= 0 || this.state.stores.curedMeat < 1) return;
+    world.outfit = {};
+    for (const item of LOADOUT_ITEMS) {
+      const amount = Math.min(world.loadout[item.id] ?? 0, this.getLoadoutAvailable(item));
+      world.outfit[item.id] = amount;
+      if (item.resource && amount > 0) this.state.stores[item.resource] -= amount;
+    }
     world.active = true;
     world.x = 0; world.y = 0; world.steps = 0;
     world.maxHp = this.getMaxHealth();
     world.hp = world.maxHp;
-    world.food = maxFood;
+    world.food = world.outfit.curedMeat ?? 0;
     world.water = this.getWaterCapacity();
     world.visited = Array.from(new Set([...world.visited, '0,0']));
     this.addLog('带着有限的补给，旅人踏入荒野。');
     this.playSfx('embark');
     this.showView('world');
+  }
+
+  private redrawWorld(): void {
+    this.root.removeAll(true);
+    this.drawWorld();
+    this.refreshHeader();
+  }
+
+  private getLoadoutAvailable(item: LoadoutItem): number {
+    if (item.resource) return Math.floor(this.state.stores[item.resource]);
+    if (item.crafted) return Math.floor(this.state.crafted[item.crafted] ?? 0);
+    return 0;
+  }
+
+  private getLoadoutWeight(): number {
+    return LOADOUT_ITEMS.reduce((weight, item) => weight + (this.state.world.loadout[item.id] ?? 0) * item.weight, 0);
+  }
+
+  private getOutfitCount(id: string): number {
+    return this.state.world.outfit[id] ?? 0;
+  }
+
+  private getItemWeight(id: string): number {
+    return LOADOUT_ITEMS.find(item => item.id === id)?.weight ?? 1;
+  }
+
+  private getActiveCarryWeight(): number {
+    const world = this.state.world;
+    return Object.entries(world.outfit).reduce((weight, [id, amount]) => {
+      if (id === 'curedMeat') return weight;
+      return weight + amount * this.getItemWeight(id);
+    }, world.food);
+  }
+
+  private collectLoot(loot: Partial<Record<Resource, number>>): string {
+    const taken: string[] = [];
+    let free = Math.max(0, this.getCarryCapacity() - this.getActiveCarryWeight());
+    for (const [key, value] of Object.entries(loot)) {
+      const resource = key as Resource;
+      const weight = this.getItemWeight(resource);
+      const available = value ?? 0;
+      const amount = Math.min(available, Math.floor((free + 0.0001) / weight));
+      if (amount <= 0) continue;
+      if (resource === 'curedMeat') this.state.world.food += amount;
+      else this.state.world.outfit[resource] = (this.state.world.outfit[resource] ?? 0) + amount;
+      free -= amount * weight;
+      taken.push(`${RESOURCE_NAMES[resource]} ${amount}`);
+    }
+    return taken.length ? `带走了${taken.join('、')}。` : '行囊已经装不下更多东西。';
+  }
+
+  private changeLoadout(item: LoadoutItem, delta: number): void {
+    const loadout = this.state.world.loadout;
+    const current = loadout[item.id] ?? 0;
+    if (delta < 0) {
+      loadout[item.id] = Math.max(0, current + delta);
+    } else {
+      const available = this.getLoadoutAvailable(item);
+      const free = Math.max(0, this.getCarryCapacity() - this.getLoadoutWeight());
+      const byWeight = Math.floor((free + 0.0001) / item.weight);
+      loadout[item.id] = Math.min(available, current + Math.min(delta, byWeight));
+    }
+    this.redrawWorld();
   }
 
   private getCarryCapacity(): number {
@@ -707,7 +828,7 @@ export class GameScene extends Phaser.Scene {
     this.root.add(eventPanel);
     if (event.stage === 'intro') {
       this.root.add(label(this, W / 2, 270, text.intro, 28, COLORS.dim).setOrigin(0.5).setWordWrapWidth(820).setAlign('center'));
-      const needsTorch = event.tile === 'V' && this.state.stores.torch <= 0;
+      const needsTorch = event.tile === 'V' && this.getOutfitCount('torch') <= 0;
       const enter = button(this, W / 2, 470, 560, 92, needsTorch ? '需要一支火把' : text.approach, () => this.enterLandmark());
       enter.setEnabled(!needsTorch);
       const leave = button(this, W / 2, 610, 420, 74, '暂时离开', () => {
@@ -729,8 +850,8 @@ export class GameScene extends Phaser.Scene {
     const event = this.pendingLandmark;
     if (!event || event.stage !== 'intro') return;
     if (event.tile === 'V') {
-      if (this.state.stores.torch <= 0) return;
-      this.state.stores.torch -= 1;
+      if (this.getOutfitCount('torch') <= 0) return;
+      this.state.world.outfit.torch -= 1;
     }
     this.startCombat(event.name, event.danger, event.loot, event.key);
   }
@@ -738,15 +859,13 @@ export class GameScene extends Phaser.Scene {
   private finishLandmark(): void {
     const event = this.pendingLandmark;
     if (!event || event.stage !== 'reward') return;
-    Object.entries(event.loot).forEach(([resource, amount]) => {
-      this.state.stores[resource as Resource] += amount ?? 0;
-    });
+    const collected = this.collectLoot(event.loot);
     if (!this.state.world.cleared.includes(event.key)) this.state.world.cleared.push(event.key);
     if (event.tile === 'W') {
       this.state.shipUnlocked = true;
       this.addLog('星舰的控制台重新亮起。村庄外出现了一条通往船体的路。');
     }
-    this.addLog(`${event.name}已经清理，物资被带回行囊。`);
+    this.addLog(`${event.name}已经清理。${collected}`);
     this.pendingLandmark = null;
     this.showView('world');
   }
@@ -790,10 +909,10 @@ export class GameScene extends Phaser.Scene {
       const x = column ? 795 : 285;
       const y = 465 + row * 104;
       const readyIn = Math.max(0, Math.ceil(((this.actionReadyAt[weapon.id] ?? 0) - Date.now()) / 1000));
-      const ammo = weapon.ammo ? ` · ${RESOURCE_NAMES[weapon.ammo]} ${formatAmount(this.state.stores[weapon.ammo])}` : '';
+      const ammo = weapon.ammo ? ` · ${RESOURCE_NAMES[weapon.ammo]} ${formatAmount(this.getOutfitCount(weapon.ammo))}` : '';
       const damage = weapon.damage === 'stun' ? '眩晕' : `${weapon.damage} 伤害`;
       const attack = button(this, x, y, 430, 78, `${weapon.name} · ${damage}${readyIn ? ` · ${readyIn}s` : ammo}`, () => this.attack(weapon));
-      attack.setEnabled(readyIn <= 0 && (!weapon.ammo || this.state.stores[weapon.ammo] > 0));
+      attack.setEnabled(readyIn <= 0 && (!weapon.ammo || this.getOutfitCount(weapon.ammo) > 0));
       this.root.add(attack.root);
     });
 
@@ -803,8 +922,8 @@ export class GameScene extends Phaser.Scene {
     const eat = button(this, 285, healY + 80, 430, 78, `吃熏肉 · +8${meatReady ? ` · ${meatReady}s` : ` · 剩余 ${w.food}`}`, () => this.heal('meat'));
     eat.setEnabled(w.food > 0 && w.hp < w.maxHp && meatReady <= 0);
     const medsReady = Math.max(0, Math.ceil(((this.actionReadyAt.medicine ?? 0) - Date.now()) / 1000));
-    const meds = button(this, 795, healY + 80, 430, 78, `使用药剂 · +20${medsReady ? ` · ${medsReady}s` : ` · 库存 ${formatAmount(this.state.stores.medicine)}`}`, () => this.heal('medicine'));
-    meds.setEnabled(this.state.stores.medicine > 0 && w.hp < w.maxHp && medsReady <= 0);
+    const meds = button(this, 795, healY + 80, 430, 78, `使用药剂 · +20${medsReady ? ` · ${medsReady}s` : ` · 剩余 ${formatAmount(this.getOutfitCount('medicine'))}`}`, () => this.heal('medicine'));
+    meds.setEnabled(this.getOutfitCount('medicine') > 0 && w.hp < w.maxHp && medsReady <= 0);
     this.root.add([eat.root, meds.root]);
 
     const flee = button(this, W / 2, Math.min(1450, healY + 205), 420, 72, '逃跑（失去 3 生命）', () => {
@@ -819,8 +938,8 @@ export class GameScene extends Phaser.Scene {
   private attack(weapon: WeaponDefinition): void {
     const enemy = this.activeEnemy;
     if (!enemy || Date.now() < (this.actionReadyAt[weapon.id] ?? 0)) return;
-    if (weapon.ammo && this.state.stores[weapon.ammo] <= 0) return;
-    if (weapon.ammo) this.state.stores[weapon.ammo] -= 1;
+    if (weapon.ammo && this.getOutfitCount(weapon.ammo) <= 0) return;
+    if (weapon.ammo) this.state.world.outfit[weapon.ammo] -= 1;
     const soundType = weapon.id === 'fists' ? 'unarmed' : weapon.ammo ? 'ranged' : 'melee';
     this.playSfx(`weapon-${soundType}-${Phaser.Math.Between(1, 3)}`);
     if (weapon.damage === 'stun') {
@@ -834,8 +953,8 @@ export class GameScene extends Phaser.Scene {
       if (enemy.landmarkKey && this.pendingLandmark?.key === enemy.landmarkKey) {
         this.pendingLandmark.stage = 'reward';
       } else {
-        Object.entries(enemy.loot).forEach(([key, value]) => { this.state.stores[key as Resource] += value ?? 0; });
-        this.addLog(`从${enemy.name}身上搜到了一些物资。`);
+        const collected = this.collectLoot(enemy.loot);
+        this.addLog(`从${enemy.name}身上搜刮。${collected}`);
       }
       this.showView('world');
       return;
@@ -846,8 +965,8 @@ export class GameScene extends Phaser.Scene {
   private getAvailableWeapons(): WeaponDefinition[] {
     const owned = WEAPONS.filter(weapon => {
       if (weapon.id === 'fists') return false;
-      if (weapon.permanent) return (this.state.crafted[weapon.permanent] ?? 0) > 0;
-      return weapon.ammo ? this.state.stores[weapon.ammo] > 0 : false;
+      if (weapon.permanent) return this.getOutfitCount(weapon.permanent) > 0;
+      return weapon.ammo ? this.getOutfitCount(weapon.ammo) > 0 : false;
     });
     return owned.length ? owned : [WEAPONS[0]];
   }
@@ -862,8 +981,8 @@ export class GameScene extends Phaser.Scene {
       world.hp = Math.min(world.maxHp, world.hp + 8);
       this.actionReadyAt.meat = Date.now() + 5000;
     } else {
-      if (this.state.stores.medicine <= 0 || Date.now() < (this.actionReadyAt.medicine ?? 0)) return;
-      this.state.stores.medicine -= 1;
+      if (this.getOutfitCount('medicine') <= 0 || Date.now() < (this.actionReadyAt.medicine ?? 0)) return;
+      this.state.world.outfit.medicine -= 1;
       this.playSfx('use-meds');
       world.hp = Math.min(world.maxHp, world.hp + 20);
       this.actionReadyAt.medicine = Date.now() + 7000;
@@ -874,6 +993,8 @@ export class GameScene extends Phaser.Scene {
   private collapse(): void {
     const w = this.state.world;
     w.active = false; w.x = 0; w.y = 0; w.hp = w.maxHp; w.food = 0; w.water = 0;
+    LOADOUT_ITEMS.forEach(item => { if (item.resource) w.loadout[item.id] = 0; });
+    w.outfit = {};
     this.activeEnemy = null;
     this.pendingLandmark = null;
     this.playSfx('death');
@@ -883,6 +1004,14 @@ export class GameScene extends Phaser.Scene {
 
   private returnHome(): void {
     const w = this.state.world;
+    (Object.keys(this.state.stores) as Resource[]).forEach(resource => {
+      const remaining = resource === 'curedMeat' ? w.food : (w.outfit[resource] ?? 0);
+      this.state.stores[resource] += remaining;
+      if (LOADOUT_ITEMS.some(item => item.id === resource)) w.loadout[resource] = remaining;
+    });
+    w.outfit = {};
+    w.food = 0;
+    w.water = 0;
     w.active = false; w.x = 0; w.y = 0;
     this.pendingLandmark = null;
     this.addLog('旅人回到了村庄。');
