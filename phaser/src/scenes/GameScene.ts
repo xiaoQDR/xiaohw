@@ -43,6 +43,11 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.state = loadState();
     this.cameras.main.setBackgroundColor(COLORS.bg);
+    this.resizeViewport(this.scale.gameSize);
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.resizeViewport, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.resizeViewport, this);
+    });
     this.drawShell();
     this.showView(this.state.world.active ? 'world' : 'room');
 
@@ -51,6 +56,18 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-ONE', () => this.showView('room'));
     this.input.keyboard?.on('keydown-TWO', () => this.state.builderArrived && this.showView('village'));
     this.input.keyboard?.on('keydown-THREE', () => this.state.worldUnlocked && this.showView('world'));
+  }
+
+  private resizeViewport(gameSize: Phaser.Structs.Size): void {
+    const viewportWidth = Math.max(1, gameSize.width);
+    const viewportHeight = Math.max(1, gameSize.height);
+    const zoom = Math.min(viewportWidth / W, viewportHeight / H);
+    const visibleHeight = viewportHeight / zoom;
+
+    this.cameras.main
+      .setViewport(0, 0, viewportWidth, viewportHeight)
+      .setZoom(zoom)
+      .centerOn(W / 2, visibleHeight / 2);
   }
 
   private drawShell(): void {
@@ -71,7 +88,7 @@ export class GameScene extends Phaser.Scene {
     this.clockText.setText(`余火燃烧了 ${minutes} 分钟`);
     const visible = (Object.keys(this.state.stores) as Resource[])
       .filter((key) => this.state.stores[key] >= 1)
-      .slice(0, 5)
+      .slice(0, this.scale.width < 700 ? 3 : 5)
       .map((key) => `${RESOURCE_NAMES[key]} ${formatAmount(this.state.stores[key])}`);
     this.resourceText.setText(visible.length ? visible.join('  ·  ') : '身无长物');
   }
@@ -172,8 +189,9 @@ export class GameScene extends Phaser.Scene {
     this.root.add(logPanel);
     this.root.add(label(this, 84, 810, '发生的事', 29).setFontStyle('bold'));
     const logText = this.add.text(84, 865, s.log.map((line, i) => `${i === 0 ? '›' : '·'} ${line}`).join('\n\n'), {
-      fontFamily: 'Noto Sans SC, Microsoft YaHei, sans-serif', fontSize: '24px', color: COLORS.dim, lineSpacing: 8, wordWrap: { width: 880 },
-    });
+      fontFamily: 'Noto Sans SC, Microsoft YaHei, sans-serif', fontSize: '24px', color: COLORS.dim, lineSpacing: 8,
+      wordWrap: { width: 560 }, resolution: Math.min(window.devicePixelRatio || 1, 2),
+    }).setScale(1.5);
     this.root.add(logText);
 
     const reset = button(this, cx, 1490, 360, 72, '重新开始', () => this.confirmRestart());

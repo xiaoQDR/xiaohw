@@ -14,12 +14,18 @@ export const COLORS = {
 };
 
 export function label(scene: Phaser.Scene, x: number, y: number, value: string, size = 28, color = COLORS.text): Phaser.GameObjects.Text {
-  return scene.add.text(x, y, value, {
+  const text = scene.add.text(x, y, value, {
     fontFamily: 'Noto Sans SC, Microsoft YaHei, sans-serif',
     fontSize: `${size}px`,
     color,
     lineSpacing: 8,
+    resolution: Math.min(window.devicePixelRatio || 1, 2),
   }).setOrigin(0, 0.5);
+
+  // 1080px 的设计坐标在手机上会被缩小。只放大文字，不改变面板布局，
+  // 让正文在窄屏上仍然可读，同时避免标题显得过重。
+  const readabilityScale = size <= 22 ? 1.7 : size <= 29 ? 1.5 : 1.25;
+  return text.setScale(readabilityScale);
 }
 
 export function panel(scene: Phaser.Scene, x: number, y: number, width: number, height: number, color = COLORS.panel): Phaser.GameObjects.Rectangle {
@@ -44,17 +50,24 @@ export function button(
   onClick: () => void,
 ): ButtonParts {
   const bg = scene.add.rectangle(0, 0, width, height, COLORS.panelAlt)
-    .setStrokeStyle(2, COLORS.line)
-    .setInteractive({ useHandCursor: true });
+    .setStrokeStyle(2, COLORS.line);
   const text = label(scene, 0, 0, value, 25).setOrigin(0.5);
-  const root = scene.add.container(x, y, [bg, text]);
+  const hitArea = scene.add.zone(0, 0, width, Math.max(height, 120))
+    .setInteractive({ useHandCursor: true });
+  const root = scene.add.container(x, y, [bg, text, hitArea]);
   let enabled = true;
 
-  bg.on('pointerover', () => enabled && bg.setFillStyle(0x292d32));
-  bg.on('pointerout', () => enabled && bg.setFillStyle(COLORS.panelAlt));
-  bg.on('pointerdown', () => enabled && root.setScale(0.97));
-  bg.on('pointerup', () => {
+  const release = () => {
     root.setScale(1);
+    bg.setFillStyle(COLORS.panelAlt);
+  };
+
+  hitArea.on('pointerover', () => enabled && bg.setFillStyle(0x292d32));
+  hitArea.on('pointerout', release);
+  hitArea.on('pointerupoutside', release);
+  hitArea.on('pointerdown', () => enabled && root.setScale(0.97));
+  hitArea.on('pointerup', () => {
+    release();
     if (enabled) onClick();
   });
 
@@ -64,7 +77,7 @@ export function button(
       enabled = next;
       bg.setAlpha(next ? 1 : 0.42);
       text.setAlpha(next ? 1 : 0.42);
-      if (!next) root.setScale(1);
+      if (!next) release();
     },
   };
 }

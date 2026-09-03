@@ -10,7 +10,7 @@ new Phaser.Game({
   backgroundColor: '#0c0d0f',
   render: { antialias: true, pixelArt: false },
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   scene: [GameScene],
