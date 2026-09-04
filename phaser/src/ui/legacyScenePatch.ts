@@ -3,18 +3,15 @@ import Phaser from 'phaser';
 let installed = false;
 
 /**
- * Temporary compatibility patch for legacy A Dark Room presentation.
- * It removes the remaining hard-coded dark shell/nav rectangles from GameScene
- * without touching gameplay logic. Once GameScene layout is fully ported this
- * can be folded back into the scene implementation.
+ * Compatibility patch for the remaining hard-coded dark shell/nav rectangles
+ * in GameScene. Keeps gameplay untouched while matching the original game's
+ * white page + text-tab presentation.
  */
 export function installLegacyScenePatch(): void {
   if (installed) return;
   installed = true;
 
-  const factoryProto = Phaser.GameObjects.GameObjectFactory.prototype as Phaser.GameObjects.GameObjectFactory & {
-    rectangle: (...args: any[]) => Phaser.GameObjects.Rectangle;
-  };
+  const factoryProto = Phaser.GameObjects.GameObjectFactory.prototype as any;
   const originalRectangle = factoryProto.rectangle;
 
   factoryProto.rectangle = function patchedRectangle(
@@ -37,23 +34,19 @@ export function installLegacyScenePatch(): void {
       height,
       isLegacyHeader || isLegacyNav ? 0xffffff : fillColor,
       isLegacyHeader || isLegacyNav ? 0.001 : fillAlpha,
-    );
+    ) as Phaser.GameObjects.Rectangle;
 
-    if (isLegacyHeader) {
-      rect.setStrokeStyle(0);
-    }
-
+    if (isLegacyHeader) rect.setStrokeStyle(0);
     if (isLegacyNav) {
-      // Original tabs are text controls, not filled cards.
       rect.setStrokeStyle(0);
       rect.setData('legacyTextTab', true);
     }
-
     return rect;
   };
 
-  const originalStroke = Phaser.GameObjects.Rectangle.prototype.setStrokeStyle;
-  Phaser.GameObjects.Rectangle.prototype.setStrokeStyle = function patchedStrokeStyle(
+  const rectangleProto = Phaser.GameObjects.Rectangle.prototype as any;
+  const originalStroke = rectangleProto.setStrokeStyle;
+  rectangleProto.setStrokeStyle = function patchedStrokeStyle(
     this: Phaser.GameObjects.Rectangle,
     lineWidth?: number,
     color?: number,
