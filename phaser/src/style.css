@@ -1,7 +1,7 @@
 :root {
-  color-scheme: dark;
-  font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
-  background: #08090a;
+  color-scheme: light;
+  font-family: "Times New Roman", "Songti SC", SimSun, serif;
+  background: #fff;
 }
 
 * { box-sizing: border-box; }
@@ -11,7 +11,7 @@ html, body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 25%, #1b1c1e 0, #08090a 68%);
+  background: #fff;
   overscroll-behavior: none;
 }
 
@@ -32,6 +32,7 @@ body {
   bottom: env(safe-area-inset-bottom, 0px);
   left: env(safe-area-inset-left, 0px);
   overflow: hidden;
+  background: #fff;
 }
 
 canvas {
@@ -39,4 +40,5 @@ canvas {
   width: 100% !important;
   height: 100% !important;
   touch-action: none;
+  background: #fff;
 }
