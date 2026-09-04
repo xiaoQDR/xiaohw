@@ -45,7 +45,14 @@ export function label(scene: Phaser.Scene, x: number, y: number, value: string, 
 
   // 保留移动端可读性，但不再使用现代无衬线字体和过重字号。
   const readabilityScale = size <= 22 ? 1.55 : size <= 29 ? 1.35 : 1.15;
-  return text.setScale(readabilityScale);
+  text.setScale(readabilityScale);
+
+  // 原版通知文本为 500ms 线性淡入。正文也沿用这一节奏，标题保持立即出现，避免页面闪烁。
+  if (size <= 29 && value.length > 0) {
+    text.setAlpha(0);
+    scene.tweens.add({ targets: text, alpha: 1, duration: 500, ease: 'Linear' });
+  }
+  return text;
 }
 
 export function panel(scene: Phaser.Scene, x: number, y: number, width: number, height: number, _color = COLORS.panel): Phaser.GameObjects.Rectangle {
@@ -79,7 +86,7 @@ export function button(
     .setOrigin(0, 0.5);
   const bg = scene.add.rectangle(0, 0, width, height, 0xffffff, 0.001)
     .setStrokeStyle(1, COLORS.line, 1);
-  const text = label(scene, 0, 0, shownValue, 24, COLORS.text).setOrigin(0.5);
+  const text = label(scene, 0, 0, shownValue, 24, COLORS.text).setOrigin(0.5).setAlpha(1);
   const hitArea = scene.add.zone(0, 0, width, Math.max(height, 96))
     .setInteractive({ useHandCursor: true });
   const root = scene.add.container(x, y, [cooldown, bg, text, hitArea]);
