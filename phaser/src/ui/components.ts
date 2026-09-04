@@ -89,7 +89,7 @@ export function button(
   const key = `${scene.sys.settings.key}:${Math.round(x)}:${Math.round(y)}:${shownValue.replace(/\d+/g, '#')}`;
 
   const release = () => {
-    text.setStyle({ textDecoration: 'none' });
+    text.setAlpha(enabled ? 1 : 0.42);
   };
 
   const setCooldown = (remainingSeconds: number, totalSeconds = remainingSeconds) => {
@@ -133,11 +133,13 @@ export function button(
   }
 
   hitArea.on('pointerover', () => {
-    if (enabled) text.setStyle({ textDecoration: 'underline' });
+    if (enabled) text.setAlpha(0.7);
   });
   hitArea.on('pointerout', release);
   hitArea.on('pointerupoutside', release);
-  hitArea.on('pointerdown', release);
+  hitArea.on('pointerdown', () => {
+    if (enabled) text.setAlpha(0.55);
+  });
   hitArea.on('pointerup', () => {
     release();
     if (enabled) onClick();
@@ -149,6 +151,7 @@ export function button(
       enabled = next;
       bg.setStrokeStyle(1, next ? COLORS.line : 0xb2b2b2, 1);
       text.setColor(next ? COLORS.text : '#b2b2b2');
+      text.setAlpha(next ? 1 : 0.42);
       hitArea.input && (hitArea.input.cursor = next ? 'pointer' : 'default');
       if (!next) release();
     },
