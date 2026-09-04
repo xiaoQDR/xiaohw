@@ -35,6 +35,12 @@ export interface EnemyState {
   landmarkKey?: string;
 }
 
+export interface RandomEventState {
+  id: 'nomad' | 'ruinedTraps' | 'sickness' | 'plague' | 'beastAttack';
+  stage: 'start' | 'result';
+  message?: string;
+}
+
 export interface WorldState {
   map: string[][];
   pendingLandmark: LandmarkEventState | null;
@@ -62,6 +68,7 @@ export interface SaveState {
   gatherCooldown: number;
   trapCooldown: number;
   productionTimer: number;
+  eventTimer: number;
   population: number;
   nextArrival: number;
   stores: Record<Resource, number>;
@@ -81,6 +88,7 @@ export interface SaveState {
     flightHull: number;
     altitude: number;
   };
+  activeEvent: RandomEventState | null;
   world: WorldState;
   log: string[];
 }

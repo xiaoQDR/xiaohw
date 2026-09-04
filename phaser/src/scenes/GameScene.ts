@@ -47,6 +47,7 @@ const AUDIO_FILES = [
   'landmark-swamp', 'landmark-cave', 'landmark-town', 'landmark-city', 'landmark-house',
   'landmark-battlefield', 'landmark-borehole', 'landmark-crashed-ship', 'landmark-sulphurmine',
   'landmark-coalmine', 'landmark-ironmine',
+  'event-nomad', 'event-ruined-trap', 'event-sickness', 'event-plague', 'event-beast-attack',
 ] as const;
 
 const LANDMARK_AUDIO: Record<string, string> = {
@@ -224,12 +225,15 @@ export class GameScene extends Phaser.Scene {
     this.subPage = 0;
     this.root.removeAll(true);
     this.drawNav();
-    if (view === 'room') this.drawRoom();
-    if (view === 'village') this.drawVillage();
-    if (view === 'world') this.drawWorld();
-    if (view === 'ship') this.drawShip();
-    if (view === 'space') this.drawSpace();
-    if (view === 'ending') this.drawEnding();
+    if (this.state.activeEvent) this.drawRandomEvent();
+    else {
+      if (view === 'room') this.drawRoom();
+      if (view === 'village') this.drawVillage();
+      if (view === 'world') this.drawWorld();
+      if (view === 'ship') this.drawShip();
+      if (view === 'space') this.drawSpace();
+      if (view === 'ending') this.drawEnding();
+    }
     this.refreshHeader();
     this.updateMusic();
   }
@@ -1019,6 +1023,156 @@ export class GameScene extends Phaser.Scene {
     this.showView('village');
   }
 
+  private drawRandomEvent(): void {
+    const event = this.state.activeEvent;
+    if (!event) return;
+    const titles = { nomad: '游牧商人', ruinedTraps: '毁坏的陷阱', sickness: '疾病', plague: '瘟疫', beastAttack: '野兽袭击' };
+    this.root.add(label(this, 54, 35, titles[event.id], 42, COLORS.ember).setFontStyle('bold'));
+    this.root.add(panel(this, W / 2, 510, 972, 820, 0x151315));
+    if (event.stage === 'result') {
+      this.root.add(label(this, W / 2, 330, event.message ?? '事情结束了。', 28, COLORS.dim).setOrigin(0.5).setWordWrapWidth(820).setAlign('center'));
+      const close = button(this, W / 2, 590, 460, 82, '继续', () => this.endRandomEvent());
+      this.root.add(close.root);
+      return;
+    }
+
+    if (event.id === 'nomad') {
+      this.root.add(label(this, W / 2, 225, '一个游牧商人背着粗绳捆扎的袋子来到火光边。', 26, COLORS.dim).setOrigin(0.5).setWordWrapWidth(820));
+      const offers = [
+        { text: '购买鳞片 · 毛皮 100', cost: [{ resource: 'fur' as Resource, amount: 100 }], reward: 'scales' as Resource },
+        { text: '购买牙齿 · 毛皮 200', cost: [{ resource: 'fur' as Resource, amount: 200 }], reward: 'teeth' as Resource },
+        { text: '购买诱饵 · 毛皮 5', cost: [{ resource: 'fur' as Resource, amount: 5 }], reward: 'bait' as Resource },
+      ];
+      offers.forEach((offer, index) => {
+        const buy = button(this, W / 2, 350 + index * 100, 620, 74, offer.text, () => this.buyEventOffer(offer.cost, offer.reward));
+        buy.setEnabled(this.canAfford(offer.cost));
+        this.root.add(buy.root);
+      });
+      const compassCost: Cost[] = [{ resource: 'fur', amount: 300 }, { resource: 'scales', amount: 15 }, { resource: 'teeth', amount: 5 }];
+      const compass = button(this, W / 2, 650, 620, 74, '购买罗盘 · 毛皮 300 / 鳞片 15 / 牙齿 5', () => this.buyEventCompass(compassCost));
+      compass.setEnabled(!this.state.crafted.compass && this.canAfford(compassCost));
+      const leave = button(this, W / 2, 760, 360, 68, '告别', () => this.endRandomEvent());
+      this.root.add([compass.root, leave.root]);
+      return;
+    }
+
+    const descriptions = {
+      ruinedTraps: '一些陷阱被撕得粉碎。巨大的脚印通向森林。',
+      sickness: '疾病正在村庄里扩散，需要立刻使用药剂。',
+      plague: '可怕的瘟疫席卷村庄，夜里到处是咳嗽声。',
+      beastAttack: '一群咆哮的野兽冲出树林，战斗短暂而血腥。',
+    };
+    this.root.add(label(this, W / 2, 270, descriptions[event.id], 27, COLORS.dim).setOrigin(0.5).setWordWrapWidth(820).setAlign('center'));
+    if (event.id === 'ruinedTraps') {
+      const track = button(this, 350, 520, 420, 82, '追踪脚印', () => this.resolveRandomEvent('track'));
+      const ignore = button(this, 730, 520, 280, 82, '不管', () => this.resolveRandomEvent('ignore'));
+      this.root.add([track.root, ignore.root]);
+    } else if (event.id === 'sickness') {
+      const cure = button(this, 350, 520, 420, 82, '使用 1 药剂', () => this.resolveRandomEvent('cure'));
+      cure.setEnabled(this.state.stores.medicine >= 1);
+      const ignore = button(this, 730, 520, 280, 82, '不管', () => this.resolveRandomEvent('ignore'));
+      this.root.add([cure.root, ignore.root]);
+    } else if (event.id === 'plague') {
+      const cure = button(this, 350, 520, 420, 82, '使用 5 药剂', () => this.resolveRandomEvent('cure'));
+      cure.setEnabled(this.state.stores.medicine >= 5);
+      const ignore = button(this, 730, 520, 280, 82, '什么也不做', () => this.resolveRandomEvent('ignore'));
+      this.root.add([cure.root, ignore.root]);
+    } else {
+      const mourn = button(this, W / 2, 540, 420, 82, '埋葬死者', () => this.resolveRandomEvent('mourn'));
+      this.root.add(mourn.root);
+    }
+  }
+
+  private buyEventOffer(cost: Cost[], reward: Resource): void {
+    if (!this.canAfford(cost)) return;
+    this.pay(cost);
+    this.state.stores[reward] += 1;
+    this.playSfx('buy');
+    this.showView(this.view);
+  }
+
+  private buyEventCompass(cost: Cost[]): void {
+    if (this.state.crafted.compass || !this.canAfford(cost)) return;
+    this.pay(cost);
+    this.state.crafted.compass = 1;
+    this.state.worldUnlocked = true;
+    this.playSfx('buy');
+    this.showView(this.view);
+  }
+
+  private resolveRandomEvent(action: 'track' | 'ignore' | 'cure' | 'mourn'): void {
+    const event = this.state.activeEvent;
+    if (!event) return;
+    if (event.id === 'ruinedTraps') {
+      if (action === 'track' && Math.random() >= 0.5) {
+        this.state.stores.fur += 100; this.state.stores.meat += 100; this.state.stores.teeth += 10;
+        event.message = '不远处躺着一头受伤的野兽。获得毛皮 100、肉 100、牙齿 10。';
+      } else event.message = action === 'track' ? '脚印几分钟后消失，森林里什么也没有。' : '脚印渐渐被风抹去。';
+    }
+    if (event.id === 'sickness') {
+      if (action === 'cure' && this.state.stores.medicine >= 1) {
+        this.state.stores.medicine -= 1; event.message = '疾病及时得到控制。';
+      } else {
+        const dead = Phaser.Math.Between(1, Math.max(1, Math.floor(this.state.population / 2)));
+        this.killVillagers(dead); event.message = `${dead} 位村民死于疾病。`;
+      }
+    }
+    if (event.id === 'plague') {
+      if (action === 'cure' && this.state.stores.medicine >= 5) {
+        this.state.stores.medicine -= 5;
+        const dead = Phaser.Math.Between(2, 6); this.killVillagers(dead);
+        event.message = `瘟疫最终被遏制，但仍有 ${dead} 人死去。`;
+      } else {
+        const dead = Math.min(this.state.population, Phaser.Math.Between(10, 89));
+        this.killVillagers(dead); event.message = `瘟疫几乎毁掉村庄，${dead} 人死去。`;
+      }
+    }
+    if (event.id === 'beastAttack') event.message = event.message ?? '村民埋葬死者，捕食者成了猎物。';
+    event.stage = 'result';
+    this.showView(this.view);
+  }
+
+  private killVillagers(amount: number): void {
+    this.state.population = Math.max(0, this.state.population - amount);
+    let excess = Math.max(0, Object.values(this.state.jobs).reduce((sum, count) => sum + count, 0) - this.state.population);
+    for (const job of Object.keys(this.state.jobs) as Job[]) {
+      if (excess <= 0) break;
+      const removed = Math.min(excess, this.state.jobs[job]);
+      this.state.jobs[job] -= removed;
+      excess -= removed;
+    }
+  }
+
+  private endRandomEvent(): void {
+    this.state.activeEvent = null;
+    this.state.eventTimer = Phaser.Math.Between(180, 360);
+    this.persist(false);
+    this.showView(this.view);
+  }
+
+  private handleRandomEventTimer(): void {
+    if (this.state.activeEvent || this.state.world.active || this.state.ship.inFlight || this.state.gameWon) return;
+    this.state.eventTimer -= 1;
+    if (this.state.eventTimer > 0) return;
+    const available: Array<'nomad' | 'ruinedTraps' | 'sickness' | 'plague' | 'beastAttack'> = [];
+    if (this.view === 'room' && this.state.stores.fur > 0) available.push('nomad');
+    if (this.view === 'village' && this.state.buildings.trap > 0) available.push('ruinedTraps');
+    if (this.view === 'village' && this.state.population > 10 && this.state.population < 50) available.push('sickness');
+    if (this.view === 'village' && this.state.population > 50) available.push('plague');
+    if (this.view === 'village' && this.state.population > 0) available.push('beastAttack');
+    if (!available.length) { this.state.eventTimer = 60; return; }
+    const id = Phaser.Utils.Array.GetRandom(available);
+    if (id === 'ruinedTraps') this.state.buildings.trap -= Phaser.Math.Between(1, this.state.buildings.trap);
+    if (id === 'beastAttack') {
+      const dead = Math.min(this.state.population, Phaser.Math.Between(1, 10));
+      this.killVillagers(dead);
+      this.state.stores.fur += 100; this.state.stores.meat += 100; this.state.stores.teeth += 10;
+      this.state.activeEvent = { id, stage: 'start', message: `${dead} 位村民死去。获得毛皮 100、肉 100、牙齿 10。` };
+    } else this.state.activeEvent = { id, stage: 'start' };
+    this.playSfx(`event-${id === 'ruinedTraps' ? 'ruined-trap' : id === 'beastAttack' ? 'beast-attack' : id}`);
+    this.showView(this.view);
+  }
+
   private drawShip(): void {
     const ship = this.state.ship;
     this.root.add(label(this, 54, 35, '一艘旧星舰', 42).setFontStyle('bold'));
@@ -1213,6 +1367,7 @@ export class GameScene extends Phaser.Scene {
       s.productionTimer = 10;
     }
     this.handlePopulation();
+    this.handleRandomEventTimer();
     this.handleEnemyAttack();
     this.refreshHeader();
     if (this.view === 'room' || this.view === 'world' && this.activeEnemy) this.showView(this.view);
