@@ -43,20 +43,11 @@ export function label(scene: Phaser.Scene, x: number, y: number, value: string, 
     resolution: Math.min(window.devicePixelRatio || 1, 2),
   }).setOrigin(0, 0.5);
 
-  // 保留移动端可读性，但不再使用现代无衬线字体和过重字号。
   const readabilityScale = size <= 22 ? 1.55 : size <= 29 ? 1.35 : 1.15;
-  text.setScale(readabilityScale);
-
-  // 原版通知文本为 500ms 线性淡入。正文也沿用这一节奏，标题保持立即出现，避免页面闪烁。
-  if (size <= 29 && value.length > 0) {
-    text.setAlpha(0);
-    scene.tweens.add({ targets: text, alpha: 1, duration: 500, ease: 'Linear' });
-  }
-  return text;
+  return text.setScale(readabilityScale);
 }
 
 export function panel(scene: Phaser.Scene, x: number, y: number, width: number, height: number, _color = COLORS.panel): Phaser.GameObjects.Rectangle {
-  // 原版主体并不是卡片式 UI。保留矩形只作为现有 Phaser 排版容器，视觉上融入白底。
   return scene.add.rectangle(x, y, width, height, COLORS.panel, 1);
 }
 
@@ -81,7 +72,6 @@ export function button(
   const parsed = parseCooldown(value);
   const shownValue = parsed?.display ?? value;
 
-  // 原版 Button.js：1px 黑框、透明/白底，冷却层位于按钮内部并从 100% 线性缩到 0%。
   const cooldown = scene.add.rectangle(-width / 2, 0, 0, height, 0xdddddd, 1)
     .setOrigin(0, 0.5);
   const bg = scene.add.rectangle(0, 0, width, height, 0xffffff, 0.001)
