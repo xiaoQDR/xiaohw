@@ -44,20 +44,34 @@ function getWorkers(scene: BuildScene): Phaser.GameObjects.Image[] {
   return getPrivate<Phaser.GameObjects.Image[]>(scene, 'workers') ?? [];
 }
 
+function showToast(scene: BuildScene, message: string): void {
+  const fn = (scene as unknown as { showToast?: (text: string) => void }).showToast;
+  fn?.call(scene, message);
+}
+
+function refreshResources(scene: BuildScene): void {
+  const fn = (scene as unknown as { refreshResources?: () => void }).refreshResources;
+  fn?.call(scene);
+}
+
 function refreshTrapBadge(scene: BuildScene, trap: TrapState): void {
   if (!trap.sprite.active || !trap.label.active) return;
+  if (trap.busy) {
+    trap.label.setText(`陷阱 ${trap.stored}/${TRAP_CAPACITY} · 回收中`).setColor('#ffd58a');
+    return;
+  }
   if (trap.stored >= TRAP_CAPACITY) {
-    trap.label.setText(`陷阱 ${trap.stored}/${TRAP_CAPACITY} · 待回收`).setColor('#ffe19a');
+    trap.label.setText(`陷阱 ${trap.stored}/${TRAP_CAPACITY} · 点击回收`).setColor('#ffe19a');
     return;
   }
   const remain = Math.max(0, trap.readyAt - scene.time.now);
   trap.label
-    .setText(trap.stored > 0 ? `陷阱 ${trap.stored}/${TRAP_CAPACITY} · ${Math.ceil(remain / 1000)}s` : `陷阱 ${Math.ceil(remain / 1000)}s`)
-    .setColor('#e8eadb');
+    .setText(trap.stored > 0 ? `陷阱 ${trap.stored}/${TRAP_CAPACITY} · 点击回收` : `陷阱 ${Math.ceil(remain / 1000)}s`)
+    .setColor(trap.stored > 0 ? '#ffe19a' : '#e8eadb');
 }
 
 function createTrapBadge(scene: BuildScene, sprite: Phaser.GameObjects.Image): Pick<TrapState, 'badge' | 'label'> {
-  const bg = scene.add.rectangle(sprite.x, sprite.y - 112, 190, 46, 0x283329, 0.92)
+  const bg = scene.add.rectangle(sprite.x, sprite.y - 112, 206, 46, 0x283329, 0.92)
     .setStrokeStyle(2, 0x738567, 1);
   const label = scene.add.text(sprite.x, sprite.y - 112, '', {
     fontFamily: 'system-ui, sans-serif',
@@ -69,6 +83,60 @@ function createTrapBadge(scene: BuildScene, sprite: Phaser.GameObjects.Image): P
   const world = getPrivate<Phaser.GameObjects.Container>(scene, 'world');
   world?.add(badge);
   return { badge, label };
+}
+
+function rollTrapLoot(catches: number): { meat: number; fur: number } {
+  const meat = catches * Phaser.Math.Between(2, 4);
+  let fur = 0;
+  for (let i = 0; i < catches; i += 1) {
+    if (Math.random() < 0.65) fur += 1;
+  }
+  return { meat, fur };
+}
+
+function addTrapLoot(scene: BuildScene, x: number, y: number, catches: number): void {
+  if (catches <= 0) return;
+  const state = getSceneState(scene);
+  const loot = rollTrapLoot(catches);
+  state.meat += loot.meat;
+  state.fur += loot.fur;
+  refreshResources(scene);
+
+  const popup = scene.add.text(x, y, `+${loot.meat} 肉${loot.fur > 0 ? `  +${loot.fur} 毛皮` : ''}`, {
+    fontFamily: 'system-ui, sans-serif',
+    fontSize: '21px',
+    color: '#ffe5b0',
+    fontStyle: 'bold',
+    stroke: '#3a3025',
+    strokeThickness: 4,
+  }).setOrigin(0.5).setDepth(6200);
+  scene.tweens.add({ targets: popup, y: popup.y - 44, alpha: 0, duration: 900, onComplete: () => popup.destroy() });
+}
+
+function collectTrapManually(scene: BuildScene, trap: TrapState): void {
+  if (trap.busy) {
+    showToast(scene, '陷阱师正在回收这个陷阱');
+    return;
+  }
+  if (trap.stored <= 0) {
+    const remain = Math.max(0, trap.readyAt - scene.time.now);
+    showToast(scene, `陷阱还没有猎物，还需 ${Math.ceil(remain / 1000)} 秒`);
+    return;
+  }
+
+  const catches = trap.stored;
+  trap.stored = 0;
+  trap.readyAt = scene.time.now + TRAP_CD_MS;
+  addTrapLoot(scene, trap.sprite.x, trap.sprite.y - 72, catches);
+  scene.tweens.add({
+    targets: trap.sprite,
+    scaleX: trap.sprite.scaleX * 1.08,
+    scaleY: trap.sprite.scaleY * 1.08,
+    yoyo: true,
+    duration: 110,
+  });
+  refreshTrapBadge(scene, trap);
+  showToast(scene, '已检查陷阱，陷阱会继续工作');
 }
 
 function registerTrap(scene: BuildScene, sprite: Phaser.GameObjects.Image): void {
@@ -83,6 +151,11 @@ function registerTrap(scene: BuildScene, sprite: Phaser.GameObjects.Image): void
     label: ui.label,
   };
   state.traps.push(trap);
+  sprite.setInteractive({ useHandCursor: true });
+  sprite.on('pointerdown', (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+    event.stopPropagation();
+    collectTrapManually(scene, trap);
+  });
   refreshTrapBadge(scene, trap);
 }
 
@@ -116,12 +189,7 @@ function deliverTrapLoot(scene: BuildScene, worker: Phaser.GameObjects.Image, tr
 
   trap.stored = 0;
   trap.readyAt = scene.time.now + TRAP_CD_MS;
-  const meatGain = catches * Phaser.Math.Between(2, 4);
-  let furGain = 0;
-  for (let i = 0; i < catches; i += 1) {
-    if (Math.random() < 0.65) furGain += 1;
-  }
-
+  const loot = rollTrapLoot(catches);
   const camp = getCampPoint(scene);
   scene.tweens.add({
     targets: worker,
@@ -131,12 +199,11 @@ function deliverTrapLoot(scene: BuildScene, worker: Phaser.GameObjects.Image, tr
     duration: Phaser.Math.Between(1200, 1700),
     ease: 'Sine.InOut',
     onComplete: () => {
-      state.meat += meatGain;
-      state.fur += furGain;
-      const refreshResources = (scene as unknown as { refreshResources?: () => void }).refreshResources;
-      refreshResources?.call(scene);
+      state.meat += loot.meat;
+      state.fur += loot.fur;
+      refreshResources(scene);
 
-      const popup = scene.add.text(worker.x, worker.y - 64, `+${meatGain} 肉${furGain > 0 ? `  +${furGain} 毛皮` : ''}`, {
+      const popup = scene.add.text(worker.x, worker.y - 64, `+${loot.meat} 肉${loot.fur > 0 ? `  +${loot.fur} 毛皮` : ''}`, {
         fontFamily: 'system-ui, sans-serif',
         fontSize: '21px',
         color: '#ffe5b0',
@@ -149,6 +216,7 @@ function deliverTrapLoot(scene: BuildScene, worker: Phaser.GameObjects.Image, tr
       trap.busy = false;
       state.workerBusy.delete(worker);
       worker.clearTint();
+      refreshTrapBadge(scene, trap);
     },
   });
 }
@@ -167,6 +235,7 @@ function dispatchTrappers(scene: BuildScene): void {
     state.workerBusy.add(worker);
     scene.tweens.killTweensOf(worker);
     worker.setTint(0xd7c69a);
+    refreshTrapBadge(scene, trap);
     scene.tweens.add({
       targets: worker,
       x: trap.sprite.x + Phaser.Math.Between(-28, 28),
