@@ -113,6 +113,22 @@ function addTrapLoot(scene: BuildScene, x: number, y: number, catches: number): 
   scene.tweens.add({ targets: popup, y: popup.y - 44, alpha: 0, duration: 900, onComplete: () => popup.destroy() });
 }
 
+function removeTrap(scene: BuildScene, trap: TrapState): void {
+  const state = getSceneState(scene);
+  const placed = getPrivate<Array<{ id: string; col: number; row: number; sprite: Phaser.GameObjects.Image }>>(scene, 'placed') ?? [];
+  const occupied = getPrivate<Set<string>>(scene, 'occupied');
+  const placedIndex = placed.findIndex((building) => building.sprite === trap.sprite);
+  if (placedIndex >= 0) {
+    const building = placed[placedIndex];
+    occupied?.delete(`${building.col},${building.row}`);
+    placed.splice(placedIndex, 1);
+  }
+  const trapIndex = state.traps.indexOf(trap);
+  if (trapIndex >= 0) state.traps.splice(trapIndex, 1);
+  trap.badge.destroy(true);
+  trap.sprite.destroy();
+}
+
 function collectTrapManually(scene: BuildScene, trap: TrapState): void {
   if (trap.busy) {
     showToast(scene, '陷阱师正在回收这个陷阱');
@@ -125,18 +141,9 @@ function collectTrapManually(scene: BuildScene, trap: TrapState): void {
   }
 
   const catches = trap.stored;
-  trap.stored = 0;
-  trap.readyAt = scene.time.now + TRAP_CD_MS;
   addTrapLoot(scene, trap.sprite.x, trap.sprite.y - 72, catches);
-  scene.tweens.add({
-    targets: trap.sprite,
-    scaleX: trap.sprite.scaleX * 1.08,
-    scaleY: trap.sprite.scaleY * 1.08,
-    yoyo: true,
-    duration: 110,
-  });
-  refreshTrapBadge(scene, trap);
-  showToast(scene, '已检查陷阱，陷阱会继续工作');
+  showToast(scene, '已回收陷阱');
+  removeTrap(scene, trap);
 }
 
 function registerTrap(scene: BuildScene, sprite: Phaser.GameObjects.Image): void {
@@ -161,7 +168,7 @@ function registerTrap(scene: BuildScene, sprite: Phaser.GameObjects.Image): void
 
 function tickTraps(scene: BuildScene): void {
   const state = getSceneState(scene);
-  for (const trap of state.traps) {
+  for (const trap of [...state.traps]) {
     if (!trap.sprite.active) continue;
     if (trap.stored < TRAP_CAPACITY && scene.time.now >= trap.readyAt) {
       trap.stored += 1;
@@ -187,8 +194,6 @@ function deliverTrapLoot(scene: BuildScene, worker: Phaser.GameObjects.Image, tr
     return;
   }
 
-  trap.stored = 0;
-  trap.readyAt = scene.time.now + TRAP_CD_MS;
   const loot = rollTrapLoot(catches);
   const camp = getCampPoint(scene);
   scene.tweens.add({
@@ -213,10 +218,10 @@ function deliverTrapLoot(scene: BuildScene, worker: Phaser.GameObjects.Image, tr
       }).setOrigin(0.5).setDepth(6200);
       scene.tweens.add({ targets: popup, y: popup.y - 44, alpha: 0, duration: 900, onComplete: () => popup.destroy() });
 
-      trap.busy = false;
       state.workerBusy.delete(worker);
       worker.clearTint();
-      refreshTrapBadge(scene, trap);
+      removeTrap(scene, trap);
+      showToast(scene, '陷阱师带回猎物，陷阱已消耗');
     },
   });
 }
