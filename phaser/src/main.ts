@@ -5,11 +5,13 @@ import { installJobPanelPatch } from './ui/jobPanelPatch';
 import { installTrapSystemPatch } from './ui/trapSystemPatch';
 import { installEventSystemPatch } from './ui/eventSystemPatch';
 import { installOriginalBalancePatch } from './ui/originalBalancePatch';
+import { installDynamicBuildCostPatch } from './ui/dynamicBuildCostPatch';
 
 installJobPanelPatch();
 installTrapSystemPatch();
 installEventSystemPatch();
 installOriginalBalancePatch();
+installDynamicBuildCostPatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
