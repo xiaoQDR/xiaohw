@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import './style.css';
 import { BuildScene } from './scenes/BuildScene';
+import { installJobPanelPatch } from './ui/jobPanelPatch';
+
+installJobPanelPatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
