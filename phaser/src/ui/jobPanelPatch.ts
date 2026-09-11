@@ -201,7 +201,7 @@ function createUi(scene: BuildScene): JobState {
 }
 
 export function installJobPanelPatch(): void {
-  const proto = BuildScene.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+  const proto = BuildScene.prototype as unknown as Record<string, any>;
   if ((proto as Record<string, unknown>).__jobPanelPatched) return;
   (proto as Record<string, unknown>).__jobPanelPatched = true;
 
