@@ -2,45 +2,44 @@ import Phaser from 'phaser';
 import { BuildScene } from '../scenes/BuildScene';
 
 type AnyFn = (...args: any[]) => any;
+type ResourceKey = 'wood' | 'fur' | 'meat' | 'bait' | 'scales' | 'teeth' | 'cloth' | 'medicine' | 'charm';
+type Cost = Partial<Record<ResourceKey, number>>;
+type NextScene = string | Array<{ under: number; scene: string }>;
 
-type EventEffect = {
-  wood?: number;
-  meat?: number;
-  fur?: number;
-  population?: number;
-  toast?: string;
+type EventButton = {
+  text: string;
+  cost?: Cost;
+  reward?: Cost;
+  available?: (scene: BuildScene) => boolean;
+  nextScene?: NextScene;
+  action?: (scene: BuildScene) => void;
 };
 
-type EventChoice = {
-  label: string;
-  condition?: (scene: BuildScene, state: EventState) => boolean;
-  disabledText?: string;
-  effect: EventEffect | ((scene: BuildScene, state: EventState) => EventEffect);
+type EventScene = {
+  text: string[];
+  notification?: string;
+  reward?: Cost;
+  onLoad?: (scene: BuildScene) => void;
+  buttons: Record<string, EventButton>;
 };
 
-type CampEvent = {
+type OriginalEvent = {
   id: string;
   title: string;
-  text: string;
-  once?: boolean;
-  condition?: (scene: BuildScene, state: EventState) => boolean;
-  choices: EventChoice[];
+  isAvailable: (scene: BuildScene) => boolean;
+  scenes: Record<string, EventScene>;
 };
 
 type EventState = {
   nextEventAt: number;
-  active: boolean;
+  activeEvent?: OriginalEvent;
+  activeScene?: string;
   panel?: Phaser.GameObjects.Container;
-  used: Set<string>;
-  meatBonus: number;
-  furBonus: number;
 };
 
+const EVENT_MIN_MS = 3 * 60 * 1000;
+const EVENT_MAX_MS = 6 * 60 * 1000;
 const states = new WeakMap<BuildScene, EventState>();
-const FIRST_EVENT_DELAY = 12000;
-const EVENT_DELAY_MIN = 18000;
-const EVENT_DELAY_MAX = 30000;
-const MENU_H = 430;
 
 function getPrivate<T>(scene: BuildScene, key: string): T | undefined {
   return (scene as unknown as Record<string, unknown>)[key] as T | undefined;
@@ -50,288 +49,328 @@ function setPrivate(scene: BuildScene, key: string, value: unknown): void {
   (scene as unknown as Record<string, unknown>)[key] = value;
 }
 
-function getState(scene: BuildScene): EventState {
-  let state = states.get(scene);
-  if (!state) {
-    state = {
-      nextEventAt: scene.time.now + FIRST_EVENT_DELAY,
-      active: false,
-      used: new Set<string>(),
-      meatBonus: 0,
-      furBonus: 0,
-    };
-    states.set(scene, state);
-  }
-  return state;
+function getResource(scene: BuildScene, key: ResourceKey): number {
+  return Number(getPrivate<number>(scene, key) ?? 0);
 }
 
-function getWood(scene: BuildScene): number {
-  return Number(getPrivate<number>(scene, 'wood') ?? 0);
+function addResource(scene: BuildScene, key: ResourceKey, amount: number): void {
+  setPrivate(scene, key, Math.max(0, getResource(scene, key) + amount));
+}
+
+function applyResources(scene: BuildScene, values?: Cost, sign = 1): void {
+  if (!values) return;
+  for (const [key, amount] of Object.entries(values)) addResource(scene, key as ResourceKey, Number(amount) * sign);
+}
+
+function canPay(scene: BuildScene, cost?: Cost): boolean {
+  if (!cost) return true;
+  return Object.entries(cost).every(([key, amount]) => getResource(scene, key as ResourceKey) >= Number(amount));
+}
+
+function refresh(scene: BuildScene): void {
+  (scene as unknown as { refreshResources?: () => void }).refreshResources?.call(scene);
+}
+
+function toast(scene: BuildScene, message: string): void {
+  (scene as unknown as { showToast?: (message: string) => void }).showToast?.call(scene, message);
 }
 
 function getPopulation(scene: BuildScene): number {
   return Number(getPrivate<number>(scene, 'population') ?? 0);
 }
 
-function getPopulationCap(scene: BuildScene): number {
-  return Number(getPrivate<number>(scene, 'populationCap') ?? 0);
-}
-
-function refresh(scene: BuildScene): void {
-  const fn = (scene as unknown as { refreshResources?: () => void }).refreshResources;
-  fn?.call(scene);
-}
-
-function showToast(scene: BuildScene, message: string): void {
-  const fn = (scene as unknown as { showToast?: (message: string) => void }).showToast;
-  fn?.call(scene, message);
-}
-
-function addPopulation(scene: BuildScene, amount: number): number {
-  let current = getPopulation(scene);
-  const cap = getPopulationCap(scene);
+function killVillagers(scene: BuildScene, count: number): void {
   const workers = getPrivate<Phaser.GameObjects.Image[]>(scene, 'workers') ?? [];
-
-  if (amount > 0) {
-    const actual = Math.max(0, Math.min(amount, cap - current));
-    const spawn = (scene as unknown as { spawnWorker?: () => void }).spawnWorker;
-    for (let i = 0; i < actual; i += 1) {
-      current += 1;
-      setPrivate(scene, 'population', current);
-      spawn?.call(scene);
-    }
-    return actual;
-  }
-
-  const actual = Math.max(-current, amount);
-  const removeCount = Math.abs(actual);
-  for (let i = 0; i < removeCount; i += 1) {
+  const actual = Math.min(Math.max(0, count), getPopulation(scene));
+  for (let i = 0; i < actual; i += 1) {
     const worker = workers.pop();
     if (worker) {
       scene.tweens.killTweensOf(worker);
       worker.destroy();
     }
   }
-  current += actual;
-  setPrivate(scene, 'population', current);
-  return actual;
-}
-
-function applyEffect(scene: BuildScene, state: EventState, effect: EventEffect): void {
-  if (effect.wood) setPrivate(scene, 'wood', Math.max(0, getWood(scene) + effect.wood));
-  if (effect.meat) state.meatBonus += effect.meat;
-  if (effect.fur) state.furBonus += effect.fur;
-  if (effect.population) addPopulation(scene, effect.population);
+  setPrivate(scene, 'population', getPopulation(scene) - actual);
   refresh(scene);
-  if (effect.toast) showToast(scene, effect.toast);
 }
 
-const EVENTS: CampEvent[] = [
+function buildingCount(scene: BuildScene, id: string): number {
+  const placed = getPrivate<Array<{ id: string }>>(scene, 'placed') ?? [];
+  return placed.filter((item) => item.id === id).length;
+}
+
+function destroyOneHut(scene: BuildScene): void {
+  const placed = getPrivate<Array<{ id: string; col: number; row: number; sprite: Phaser.GameObjects.Image }>>(scene, 'placed') ?? [];
+  const index = placed.findIndex((item) => item.id === 'hut');
+  if (index < 0) return;
+  const hut = placed[index];
+  getPrivate<Set<string>>(scene, 'occupied')?.delete(`${hut.col},${hut.row}`);
+  placed.splice(index, 1);
+  hut.sprite.destroy();
+  killVillagers(scene, Math.min(4, getPopulation(scene)));
+  (scene as unknown as { recalculatePopulationCap?: () => void }).recalculatePopulationCap?.call(scene);
+}
+
+function resolveNext(next?: NextScene): string | undefined {
+  if (!next) return undefined;
+  if (typeof next === 'string') return next;
+  const roll = Math.random();
+  for (const branch of next) if (roll < branch.under) return branch.scene;
+  return next[next.length - 1]?.scene;
+}
+
+function formatCost(cost?: Cost): string {
+  if (!cost) return '';
+  const labels: Record<ResourceKey, string> = {
+    wood: '木材', fur: '毛皮', meat: '肉', bait: '诱饵', scales: '鳞片', teeth: '牙齿', cloth: '布料', medicine: '药剂', charm: '护符',
+  };
+  return Object.entries(cost).map(([key, amount]) => `${labels[key as ResourceKey]} ${amount}`).join(' / ');
+}
+
+const EVENTS: OriginalEvent[] = [
   {
-    id: 'wanderer',
-    title: '一个流浪者',
-    text: '一个疲惫的流浪者停在火堆边。他看起来愿意留下，只需要一个能睡觉的地方。',
-    condition: (scene) => getPopulation(scene) < getPopulationCap(scene),
-    choices: [
-      { label: '让他留下', effect: { population: 1, toast: '流浪者加入了营地' } },
-      { label: '让他继续赶路', effect: { toast: '流浪者离开了营地' } },
-    ],
+    id: 'nomad', title: '游牧商人',
+    isAvailable: (s) => getResource(s, 'fur') > 0,
+    scenes: {
+      start: {
+        text: ['一个游牧商人拖着用粗绳捆住的破袋子走进营地。', '他不说自己从哪里来，但显然不会久留。'],
+        notification: '一个游牧商人来做生意。',
+        buttons: {
+          scales: { text: '购买鳞片', cost: { fur: 100 }, reward: { scales: 1 } },
+          teeth: { text: '购买牙齿', cost: { fur: 200 }, reward: { teeth: 1 } },
+          bait: { text: '购买诱饵', cost: { fur: 5 }, reward: { bait: 1 } },
+          leave: { text: '告别', nextScene: 'end' },
+        },
+      },
+      end: { text: ['商人收好货物，很快消失在森林里。'], buttons: { close: { text: '结束' } } },
+    },
   },
   {
-    id: 'beggar',
-    title: '饥饿的乞丐',
-    text: '一个饥饿的人在营地边缘徘徊。他盯着火堆，手里什么都没有。',
-    choices: [
-      {
-        label: '给他 10 木材换物资',
-        condition: (scene) => getWood(scene) >= 10,
-        disabledText: '木材不足 10',
-        effect: { wood: -10, meat: 5, fur: 1, toast: '得到 5 肉和 1 毛皮' },
+    id: 'noises_outside', title: '屋外的声音',
+    isAvailable: (s) => getResource(s, 'wood') > 0,
+    scenes: {
+      start: {
+        text: ['墙外传来拖曳和摩擦的声音。', '不知道外面有什么东西。'],
+        notification: '墙外传来奇怪的声音。',
+        buttons: {
+          investigate: { text: '出去查看', nextScene: [{ under: 0.3, scene: 'stuff' }, { under: 1, scene: 'nothing' }] },
+          ignore: { text: '忽略', nextScene: 'end' },
+        },
       },
-      { label: '不理会', effect: { toast: '乞丐消失在树林里' } },
-    ],
+      stuff: { text: ['门外放着一捆树枝，外面包着粗糙的毛皮。', '夜色重新安静下来。'], reward: { wood: 100, fur: 10 }, buttons: { back: { text: '回去', nextScene: 'end' } } },
+      nothing: { text: ['模糊的影子在视野边缘移动。', '声音突然停止了。'], buttons: { back: { text: '回去', nextScene: 'end' } } },
+      end: { text: ['没有别的事情发生。'], buttons: { close: { text: '结束' } } },
+    },
   },
   {
-    id: 'thief',
-    title: '夜里的小偷',
-    text: '夜里传来窸窣声。有人正在木材堆附近翻找。',
-    choices: [
-      {
-        label: '追出去',
-        effect: () => Math.random() < 0.55
-          ? { wood: 8, toast: '抓住了小偷，还找回了一些木材' }
-          : { wood: -6, toast: '小偷逃了，还顺走了一些木材' },
+    id: 'noises_inside', title: '储藏室里的声音',
+    isAvailable: (s) => getResource(s, 'wood') > 0,
+    scenes: {
+      start: {
+        text: ['储藏室里传来抓挠声。', '有什么东西闯进去了。'],
+        buttons: {
+          investigate: { text: '查看', nextScene: [{ under: 0.5, scene: 'scales' }, { under: 0.8, scene: 'teeth' }, { under: 1, scene: 'cloth' }] },
+          ignore: { text: '忽略', nextScene: 'end' },
+        },
       },
-      { label: '守住火堆', effect: { wood: -3, toast: '损失了少量木材，但没人受伤' } },
-    ],
+      scales: { text: ['一些木材不见了。', '地上散落着细小的鳞片。'], onLoad: (s) => convertWood(s, 'scales'), buttons: { close: { text: '离开', nextScene: 'end' } } },
+      teeth: { text: ['一些木材不见了。', '地上散落着细小的牙齿。'], onLoad: (s) => convertWood(s, 'teeth'), buttons: { close: { text: '离开', nextScene: 'end' } } },
+      cloth: { text: ['一些木材不见了。', '地上留着破碎的布料。'], onLoad: (s) => convertWood(s, 'cloth'), buttons: { close: { text: '离开', nextScene: 'end' } } },
+      end: { text: ['储藏室重新安静下来。'], buttons: { close: { text: '结束' } } },
+    },
   },
   {
-    id: 'beast',
-    title: '野兽袭击',
-    text: '树林突然躁动起来。一头野兽冲向营地，火光让它迟疑了一瞬。',
-    condition: (scene) => getPopulation(scene) > 0,
-    choices: [
-      {
-        label: '点燃木柴驱赶（-12 木材）',
-        condition: (scene) => getWood(scene) >= 12,
-        disabledText: '木材不足 12',
-        effect: { wood: -12, meat: 4, fur: 1, toast: '野兽退去，留下了可用的猎物' },
+    id: 'beggar', title: '乞丐',
+    isAvailable: (s) => getResource(s, 'fur') > 0,
+    scenes: {
+      start: {
+        text: ['一个乞丐来到营地。', '他请求一些毛皮，好熬过夜里的寒冷。'],
+        buttons: {
+          give50: { text: '给 50 毛皮', cost: { fur: 50 }, nextScene: [{ under: 0.5, scene: 'scales' }, { under: 0.8, scene: 'teeth' }, { under: 1, scene: 'cloth' }] },
+          give100: { text: '给 100 毛皮', cost: { fur: 100 }, nextScene: [{ under: 0.5, scene: 'teeth' }, { under: 0.8, scene: 'scales' }, { under: 1, scene: 'cloth' }] },
+          deny: { text: '赶走他', nextScene: 'end' },
+        },
       },
-      {
-        label: '让村民迎战',
-        effect: () => Math.random() < 0.65
-          ? { meat: 7, fur: 2, toast: '村民击退野兽，收获了猎物' }
-          : { population: -1, toast: '有人在袭击中失踪了' },
-      },
-    ],
+      scales: { text: ['乞丐表示感谢，留下了一堆鳞片。'], reward: { scales: 20 }, buttons: { close: { text: '告别', nextScene: 'end' } } },
+      teeth: { text: ['乞丐表示感谢，留下了一堆牙齿。'], reward: { teeth: 20 }, buttons: { close: { text: '告别', nextScene: 'end' } } },
+      cloth: { text: ['乞丐表示感谢，留下了一些布料。'], reward: { cloth: 20 }, buttons: { close: { text: '告别', nextScene: 'end' } } },
+      end: { text: ['乞丐消失在树林中。'], buttons: { close: { text: '结束' } } },
+    },
   },
   {
-    id: 'sick',
-    title: '生病的人',
-    text: '一个发烧的人倒在营地入口。他需要照料，也可能把疾病带进来。',
-    condition: (scene) => getPopulation(scene) < getPopulationCap(scene),
-    choices: [
-      {
-        label: '收留并照顾（-15 木材）',
-        condition: (scene) => getWood(scene) >= 15,
-        disabledText: '木材不足 15',
-        effect: { wood: -15, population: 1, toast: '病人熬了过去，决定留下' },
+    id: 'hut_fire', title: '火灾',
+    isAvailable: (s) => buildingCount(s, 'hut') > 0 && getPopulation(s) > 50,
+    scenes: {
+      start: {
+        text: ['大火吞没了一间小屋。', '住在里面的人没能逃出来。'],
+        notification: '一间小屋起火了。',
+        onLoad: destroyOneHut,
+        buttons: { mourn: { text: '哀悼', nextScene: 'end' } },
       },
-      { label: '给些木材让他离开（-5）', condition: (scene) => getWood(scene) >= 5, disabledText: '木材不足 5', effect: { wood: -5, toast: '他带着木材离开了' } },
-    ],
+      end: { text: ['村民埋葬死者，重新开始工作。'], buttons: { close: { text: '结束' } } },
+    },
   },
   {
-    id: 'merchant',
-    title: '神秘商人',
-    text: '一个披着斗篷的商人来到火堆旁。他不问来历，只想换些木材。',
-    choices: [
-      {
-        label: '20 木材换肉和毛皮',
-        condition: (scene) => getWood(scene) >= 20,
-        disabledText: '木材不足 20',
-        effect: { wood: -20, meat: 12, fur: 3, toast: '交易完成' },
+    id: 'sickness', title: '疾病',
+    isAvailable: (s) => getPopulation(s) > 10 && getPopulation(s) < 50 && getResource(s, 'medicine') > 0,
+    scenes: {
+      start: {
+        text: ['疾病正在村庄中蔓延。', '必须尽快使用药剂。'],
+        buttons: {
+          heal: { text: '使用 1 药剂', cost: { medicine: 1 }, nextScene: 'healed' },
+          ignore: { text: '不处理', nextScene: 'death' },
+        },
       },
-      { label: '拒绝交易', effect: { toast: '商人很快消失在森林里' } },
-    ],
+      healed: { text: ['疾病及时被控制住了。'], buttons: { close: { text: '结束', nextScene: 'end' } } },
+      death: { text: ['疾病蔓延开来。', '白天都在埋葬死者。'], onLoad: (s) => killVillagers(s, Phaser.Math.Between(1, Math.max(1, Math.floor(getPopulation(s) / 2)))), buttons: { close: { text: '结束', nextScene: 'end' } } },
+      end: { text: ['村庄恢复了安静。'], buttons: { close: { text: '关闭' } } },
+    },
   },
   {
-    id: 'hut_fire',
-    title: '小屋失火',
-    text: '干燥的木墙被火星点燃。火势正在向营地蔓延。',
-    condition: (scene) => ((getPrivate<Array<{ id: string }>>(scene, 'placed') ?? []).some((b) => b.id === 'hut')),
-    choices: [
-      {
-        label: '拆木灭火（-18 木材）',
-        condition: (scene) => getWood(scene) >= 18,
-        disabledText: '木材不足 18',
-        effect: { wood: -18, toast: '火被扑灭了' },
+    id: 'plague', title: '瘟疫',
+    isAvailable: (s) => getPopulation(s) > 50 && getResource(s, 'medicine') > 0,
+    scenes: {
+      start: {
+        text: ['可怕的瘟疫正在迅速扩散。', '村庄急需药剂。'],
+        buttons: {
+          buy: { text: '购买 1 药剂', cost: { scales: 70, teeth: 50 }, reward: { medicine: 1 } },
+          heal: { text: '使用 5 药剂', cost: { medicine: 5 }, nextScene: 'healed' },
+          ignore: { text: '什么也不做', nextScene: 'death' },
+        },
       },
-      { label: '冒险抢救', effect: () => Math.random() < 0.5 ? { wood: -6, toast: '火势被控制住了' } : { wood: -20, toast: '大火烧掉了大量物资' } },
-    ],
+      healed: { text: ['瘟疫最终被控制，但还是死了几个人。'], onLoad: (s) => killVillagers(s, Phaser.Math.Between(2, 6)), buttons: { close: { text: '结束', nextScene: 'end' } } },
+      death: { text: ['瘟疫席卷村庄。', '几乎没有人能逃过。'], onLoad: (s) => killVillagers(s, Phaser.Math.Between(10, 89)), buttons: { close: { text: '结束', nextScene: 'end' } } },
+      end: { text: ['幸存者重新聚到火堆旁。'], buttons: { close: { text: '关闭' } } },
+    },
   },
   {
-    id: 'mysterious_noise',
-    title: '森林里的声音',
-    text: '远处传来规律的敲击声，像是在回应营地里的斧头。',
-    once: true,
-    choices: [
-      { label: '派人查看', effect: () => Math.random() < 0.6 ? { wood: 15, fur: 1, toast: '找到了一处废弃营地' } : { wood: -5, toast: '什么也没找到，只损失了一些补给' } },
-      { label: '留在火堆旁', effect: { toast: '声音持续了一会儿，然后消失了' } },
-    ],
+    id: 'beast_attack', title: '野兽袭击',
+    isAvailable: (s) => getPopulation(s) > 0,
+    scenes: {
+      start: {
+        text: ['一群咆哮的野兽从树林里扑出来。', '战斗短暂而血腥，但野兽最终被击退。', '村民开始哀悼死者。'],
+        notification: '野兽袭击了村庄。',
+        onLoad: (s) => killVillagers(s, Phaser.Math.Between(1, 10)),
+        reward: { fur: 100, meat: 100, teeth: 10 },
+        buttons: { close: { text: '回到营地', nextScene: 'end' } },
+      },
+      end: { text: ['猎食者变成了猎物。'], buttons: { close: { text: '结束' } } },
+    },
   },
 ];
 
-function chooseEvent(scene: BuildScene, state: EventState): CampEvent | undefined {
-  const pool = EVENTS.filter((event) => {
-    if (event.once && state.used.has(event.id)) return false;
-    return event.condition ? event.condition(scene, state) : true;
-  });
-  return pool.length > 0 ? Phaser.Utils.Array.GetRandom(pool) : undefined;
+function convertWood(scene: BuildScene, target: 'scales' | 'teeth' | 'cloth'): void {
+  let wood = Math.floor(getResource(scene, 'wood') * 0.1);
+  if (wood === 0) wood = 1;
+  let reward = Math.floor(wood / 5);
+  if (reward === 0) reward = 1;
+  addResource(scene, 'wood', -wood);
+  addResource(scene, target, reward);
+  refresh(scene);
 }
 
-function closePanel(scene: BuildScene, state: EventState, event: CampEvent): void {
+function getState(scene: BuildScene): EventState {
+  let state = states.get(scene);
+  if (!state) {
+    state = { nextEventAt: scene.time.now + Phaser.Math.Between(EVENT_MIN_MS, EVENT_MAX_MS) };
+    states.set(scene, state);
+  }
+  return state;
+}
+
+function scheduleNext(scene: BuildScene): void {
+  getState(scene).nextEventAt = scene.time.now + Phaser.Math.Between(EVENT_MIN_MS, EVENT_MAX_MS);
+}
+
+function chooseEvent(scene: BuildScene): OriginalEvent | undefined {
+  const pool = EVENTS.filter((event) => event.isAvailable(scene));
+  return pool.length ? Phaser.Utils.Array.GetRandom(pool) : undefined;
+}
+
+function closeEvent(scene: BuildScene): void {
+  const state = getState(scene);
   state.panel?.destroy(true);
   state.panel = undefined;
-  state.active = false;
-  if (event.once) state.used.add(event.id);
-  state.nextEventAt = scene.time.now + Phaser.Math.Between(EVENT_DELAY_MIN, EVENT_DELAY_MAX);
+  state.activeEvent = undefined;
+  state.activeScene = undefined;
+  scheduleNext(scene);
 }
 
-function openEvent(scene: BuildScene, state: EventState, event: CampEvent): void {
-  state.active = true;
+function loadScene(scene: BuildScene, name: string): void {
+  const state = getState(scene);
+  const event = state.activeEvent;
+  if (!event) return;
+  if (name === 'end' && !event.scenes.end) {
+    closeEvent(scene);
+    return;
+  }
+  const eventScene = event.scenes[name];
+  if (!eventScene) {
+    closeEvent(scene);
+    return;
+  }
+  state.activeScene = name;
+  eventScene.onLoad?.(scene);
+  applyResources(scene, eventScene.reward, 1);
+  refresh(scene);
+  if (eventScene.notification) toast(scene, eventScene.notification);
+  renderPanel(scene, event, eventScene);
+}
+
+function renderPanel(scene: BuildScene, event: OriginalEvent, eventScene: EventScene): void {
+  const state = getState(scene);
+  state.panel?.destroy(true);
   const view = scene.cameras.main.worldView;
   const panel = scene.add.container(view.centerX, view.centerY).setDepth(9000);
   state.panel = panel;
 
-  const shade = scene.add.rectangle(0, 0, view.width + 200, view.height + 200, 0x101510, 0.58).setInteractive();
-  const bg = scene.add.rectangle(0, 0, 820, 650, 0x202a22, 0.99)
-    .setStrokeStyle(4, 0x7e916d, 1)
-    .setInteractive();
-  const tag = scene.add.text(-350, -270, '营地事件', {
-    fontFamily: 'system-ui, sans-serif', fontSize: '20px', color: '#aabd98', fontStyle: 'bold',
-  });
-  const title = scene.add.text(-350, -225, event.title, {
-    fontFamily: 'system-ui, sans-serif', fontSize: '40px', color: '#fff1d4', fontStyle: 'bold',
-  });
-  const text = scene.add.text(-350, -155, event.text, {
-    fontFamily: 'system-ui, sans-serif', fontSize: '24px', color: '#d5dec9',
-    wordWrap: { width: 700 }, lineSpacing: 8,
-  });
-  panel.add([shade, bg, tag, title, text]);
+  const shade = scene.add.rectangle(0, 0, view.width + 300, view.height + 300, 0x101510, 0.62).setInteractive();
+  const bg = scene.add.rectangle(0, 0, 840, 760, 0x202a22, 0.99).setStrokeStyle(4, 0x7e916d, 1).setInteractive();
+  const tag = scene.add.text(-360, -325, '事件', { fontFamily: 'system-ui, sans-serif', fontSize: '20px', color: '#aabd98', fontStyle: 'bold' });
+  const title = scene.add.text(-360, -282, event.title, { fontFamily: 'system-ui, sans-serif', fontSize: '40px', color: '#fff1d4', fontStyle: 'bold' });
+  const body = scene.add.text(-360, -210, eventScene.text.join('\n\n'), { fontFamily: 'system-ui, sans-serif', fontSize: '23px', color: '#d5dec9', wordWrap: { width: 720 }, lineSpacing: 6 });
+  panel.add([shade, bg, tag, title, body]);
 
-  event.choices.forEach((choice, index) => {
-    const y = 75 + index * 105;
-    const enabled = choice.condition ? choice.condition(scene, state) : true;
-    const btn = scene.add.rectangle(0, y, 690, 78, enabled ? 0x41533f : 0x313831, 1)
-      .setStrokeStyle(2, enabled ? 0x849879 : 0x596059, 1);
-    const label = scene.add.text(0, y - (enabled ? 0 : 10), choice.label, {
-      fontFamily: 'system-ui, sans-serif', fontSize: '24px', color: enabled ? '#fff3db' : '#7d867b', fontStyle: 'bold',
-    }).setOrigin(0.5);
-    panel.add([btn, label]);
-
-    if (!enabled && choice.disabledText) {
-      const reason = scene.add.text(0, y + 22, choice.disabledText, {
-        fontFamily: 'system-ui, sans-serif', fontSize: '15px', color: '#8b9188',
-      }).setOrigin(0.5);
-      panel.add(reason);
-    }
-
-    if (enabled) {
-      btn.setInteractive({ useHandCursor: true });
-      btn.on('pointerdown', (_pointer: Phaser.Input.Pointer, _x: number, _y: number, inputEvent: Phaser.Types.Input.EventData) => {
-        inputEvent.stopPropagation();
-        const effect = typeof choice.effect === 'function' ? choice.effect(scene, state) : choice.effect;
-        applyEffect(scene, state, effect);
-        closePanel(scene, state, event);
-      });
-    }
+  const entries = Object.values(eventScene.buttons).filter((button) => button.available ? button.available(scene) : true);
+  const startY = 100;
+  entries.forEach((button, index) => {
+    const y = startY + index * 105;
+    const affordable = canPay(scene, button.cost);
+    const rect = scene.add.rectangle(0, y, 700, 78, affordable ? 0x41533f : 0x303630, 1).setStrokeStyle(2, affordable ? 0x849879 : 0x555d55, 1);
+    const suffix = button.cost ? `  ·  ${formatCost(button.cost)}` : '';
+    const label = scene.add.text(0, y, `${button.text}${suffix}`, { fontFamily: 'system-ui, sans-serif', fontSize: '22px', color: affordable ? '#fff3db' : '#777f77', fontStyle: 'bold' }).setOrigin(0.5);
+    panel.add([rect, label]);
+    if (!affordable) return;
+    rect.setInteractive({ useHandCursor: true });
+    rect.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, inputEvent: Phaser.Types.Input.EventData) => {
+      inputEvent.stopPropagation();
+      applyResources(scene, button.cost, -1);
+      applyResources(scene, button.reward, 1);
+      button.action?.(scene);
+      refresh(scene);
+      const next = resolveNext(button.nextScene);
+      if (next) loadScene(scene, next);
+      else closeEvent(scene);
+    });
   });
 }
 
-function tick(scene: BuildScene, state: EventState): void {
-  if (state.active) {
+function openEvent(scene: BuildScene, event: OriginalEvent): void {
+  const state = getState(scene);
+  state.activeEvent = event;
+  loadScene(scene, 'start');
+}
+
+function tick(scene: BuildScene): void {
+  const state = getState(scene);
+  if (state.activeEvent) {
     const view = scene.cameras.main.worldView;
     state.panel?.setPosition(view.centerX, view.centerY);
     return;
   }
   if (scene.time.now < state.nextEventAt) return;
-  const event = chooseEvent(scene, state);
-  if (!event) {
-    state.nextEventAt = scene.time.now + 5000;
-    return;
-  }
-  openEvent(scene, state, event);
-}
-
-function patchResourceDisplay(scene: BuildScene, state: EventState): void {
-  const text = getPrivate<Phaser.GameObjects.Text>(scene, 'resourceText');
-  if (!text) return;
-  const wood = getWood(scene);
-  const population = getPopulation(scene);
-  const populationCap = getPopulationCap(scene);
-  const baseMeat = Number(getPrivate<number>(scene, 'meat') ?? 0);
-  const baseFur = Number(getPrivate<number>(scene, 'fur') ?? 0);
-  text.setText(`木材 ${wood}   肉 ${baseMeat + state.meatBonus}   毛皮 ${baseFur + state.furBonus}   人口 ${population}/${populationCap}`);
+  const event = chooseEvent(scene);
+  if (event) openEvent(scene, event);
+  else scheduleNext(scene);
 }
 
 export function installEventSystemPatch(): void {
@@ -342,23 +381,19 @@ export function installEventSystemPatch(): void {
 
   const originalCreate = proto.create;
   const originalUpdate = proto.update;
-  const originalRefreshResources = proto.refreshResources;
 
   proto.create = function patchedCreate(this: BuildScene, ...args: any[]) {
     const result = originalCreate.apply(this, args);
+    for (const key of ['medicine', 'scales', 'teeth', 'cloth', 'bait', 'charm']) {
+      if (getPrivate<number>(this, key) == null) setPrivate(this, key, 0);
+    }
     getState(this);
     return result;
   };
 
   proto.update = function patchedUpdate(this: BuildScene, ...args: any[]) {
     const result = originalUpdate.apply(this, args);
-    tick(this, getState(this));
-    return result;
-  };
-
-  proto.refreshResources = function patchedRefreshResources(this: BuildScene, ...args: any[]) {
-    const result = originalRefreshResources.apply(this, args);
-    patchResourceDisplay(this, getState(this));
+    tick(this);
     return result;
   };
 }
