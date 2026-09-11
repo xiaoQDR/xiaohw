@@ -36,6 +36,7 @@ const BUILDINGS: BuildingDef[] = [
 
 export class BuildScene extends Phaser.Scene {
   private world!: Phaser.GameObjects.Container;
+  private topBar!: Phaser.GameObjects.Container;
   private menu!: Phaser.GameObjects.Container;
   private placed: PlacedBuilding[] = [];
   private occupied = new Set<string>();
@@ -73,10 +74,22 @@ export class BuildScene extends Phaser.Scene {
     });
   }
 
+  update(): void {
+    this.updateUiAnchors();
+  }
+
   private resizeViewport(gameSize: Phaser.Structs.Size): void {
     const zoom = Math.min(gameSize.width / DESIGN_W, gameSize.height / DESIGN_H);
     this.cameras.main.setViewport(0, 0, gameSize.width, gameSize.height).setZoom(zoom);
     this.cameras.main.centerOn(DESIGN_W / 2, DESIGN_H / 2);
+    this.updateUiAnchors();
+  }
+
+  private updateUiAnchors(): void {
+    if (!this.topBar || !this.menu) return;
+    const view = this.cameras.main.worldView;
+    this.topBar.setPosition(view.centerX - DESIGN_W / 2, view.top).setDepth(5000);
+    this.menu.setPosition(view.centerX - DESIGN_W / 2, view.bottom - MENU_H).setDepth(5000);
   }
 
   private drawGround(): void {
@@ -105,21 +118,21 @@ export class BuildScene extends Phaser.Scene {
   }
 
   private createTopBar(): void {
-    const bg = this.add.rectangle(DESIGN_W / 2, 74, DESIGN_W, 148, 0x263126, 0.96).setScrollFactor(0).setDepth(1000);
+    this.topBar = this.add.container(0, 0).setDepth(5000);
+    const bg = this.add.rectangle(DESIGN_W / 2, 74, DESIGN_W, 148, 0x263126, 0.96);
     const title = this.add.text(42, 42, '小黑屋 · 营地', {
       fontFamily: 'system-ui, sans-serif', fontSize: '38px', color: '#f4f0df', fontStyle: 'bold',
-    }).setScrollFactor(0).setDepth(1001);
+    });
     const resource = this.add.text(DESIGN_W - 42, 52, '木材 120   人口 3', {
       fontFamily: 'system-ui, sans-serif', fontSize: '25px', color: '#efe6c8',
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(1001);
-    this.add.existing(bg);
-    this.add.existing(title);
-    this.add.existing(resource);
+    }).setOrigin(1, 0);
+    this.topBar.add([bg, title, resource]);
   }
 
   private createBottomMenu(): void {
-    this.menu = this.add.container(0, DESIGN_H - MENU_H).setScrollFactor(0).setDepth(1500);
-    const bg = this.add.rectangle(DESIGN_W / 2, MENU_H / 2, DESIGN_W, MENU_H, 0x202821, 0.98);
+    this.menu = this.add.container(0, 0).setDepth(5000);
+    const bg = this.add.rectangle(DESIGN_W / 2, MENU_H / 2, DESIGN_W, MENU_H, 0x202821, 0.98)
+      .setInteractive();
     const topLine = this.add.rectangle(DESIGN_W / 2, 3, DESIGN_W, 6, 0x627653, 1);
     const title = this.add.text(34, 20, '建造', {
       fontFamily: 'system-ui, sans-serif', fontSize: '28px', color: '#f2ebd8', fontStyle: 'bold',
@@ -154,16 +167,16 @@ export class BuildScene extends Phaser.Scene {
       if (!def) return;
       this.dragDef = def;
       this.dragPreview?.destroy();
-      this.dragPreview = this.add.image(0, 0, def.texture).setAlpha(0.66).setDepth(1200);
+      this.dragPreview = this.add.image(0, 0, def.texture).setAlpha(0.66).setDepth(4000);
       this.hoverTile?.destroy();
-      this.hoverTile = this.add.graphics().setDepth(1190);
+      this.hoverTile = this.add.graphics().setDepth(3990);
     });
 
     this.input.on('drag', (pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) => {
       if (!gameObject.getData('buildingDef') || !this.dragDef || !this.dragPreview) return;
       const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const cell = this.worldToGrid(worldPoint.x, worldPoint.y);
-      const valid = this.canPlace(this.dragDef, cell.col, cell.row) && pointer.y < this.scale.height - 220;
+      const valid = this.canPlace(this.dragDef, cell.col, cell.row) && !this.isPointerInMenu(pointer);
       const p = this.gridToWorld(cell.col, cell.row);
       this.dragPreview.setPosition(p.x, p.y - 58).setTint(valid ? 0xffffff : 0xe56b5d);
       this.drawHoverFootprint(this.dragDef, cell.col, cell.row, valid);
@@ -174,7 +187,7 @@ export class BuildScene extends Phaser.Scene {
       if (def) {
         const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
         const cell = this.worldToGrid(worldPoint.x, worldPoint.y);
-        if (pointer.y < this.scale.height - 220 && this.canPlace(def, cell.col, cell.row)) {
+        if (!this.isPointerInMenu(pointer) && this.canPlace(def, cell.col, cell.row)) {
           this.placeBuilding(def, cell.col, cell.row, true);
         }
       }
@@ -186,9 +199,14 @@ export class BuildScene extends Phaser.Scene {
     });
   }
 
+  private isPointerInMenu(pointer: Phaser.Input.Pointer): boolean {
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    return worldPoint.y >= this.cameras.main.worldView.bottom - MENU_H;
+  }
+
   private createCameraHandlers(): void {
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.dragDef || pointer.y > this.scale.height - 280) return;
+      if (this.dragDef || this.isPointerInMenu(pointer)) return;
       this.cameraDragStart = new Phaser.Math.Vector2(pointer.x, pointer.y);
       this.cameraScrollStart = new Phaser.Math.Vector2(this.cameras.main.scrollX, this.cameras.main.scrollY);
     });
@@ -197,6 +215,7 @@ export class BuildScene extends Phaser.Scene {
       const z = this.cameras.main.zoom;
       this.cameras.main.scrollX = this.cameraScrollStart.x - (pointer.x - this.cameraDragStart.x) / z;
       this.cameras.main.scrollY = this.cameraScrollStart.y - (pointer.y - this.cameraDragStart.y) / z;
+      this.updateUiAnchors();
     });
     this.input.on('pointerup', () => {
       this.cameraDragStart = null;
