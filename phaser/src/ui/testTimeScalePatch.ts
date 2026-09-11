@@ -7,6 +7,8 @@ type SpeedState = {
   index: number;
   button?: Phaser.GameObjects.Container;
   label?: Phaser.GameObjects.Text;
+  virtualNow: number;
+  lastRawNow: number;
 };
 
 const SPEEDS = [1, 5, 20] as const;
@@ -15,7 +17,8 @@ const states = new WeakMap<BuildScene, SpeedState>();
 function getState(scene: BuildScene): SpeedState {
   let state = states.get(scene);
   if (!state) {
-    state = { index: 0 };
+    const now = scene.time.now;
+    state = { index: 0, virtualNow: now, lastRawNow: now };
     states.set(scene, state);
   }
   return state;
@@ -27,6 +30,20 @@ function applySpeed(scene: BuildScene, state: SpeedState): void {
   scene.tweens.timeScale = speed;
   scene.anims.globalTimeScale = speed;
   state.label?.setText(`测试加速 ×${speed}`);
+}
+
+function advanceVirtualTime(scene: BuildScene, state: SpeedState): void {
+  const rawNow = scene.time.now;
+  let rawDelta = rawNow - state.lastRawNow;
+  if (!Number.isFinite(rawDelta) || rawDelta < 0 || rawDelta > 1000) rawDelta = 0;
+  state.virtualNow += rawDelta * SPEEDS[state.index];
+  state.lastRawNow = rawNow;
+
+  // Most simulation systems in this project compare absolute scene.time.now values
+  // (events, population, income, traps, gather cooldown). Phaser Clock timeScale
+  // does not scale that absolute value, so expose the accelerated virtual clock
+  // before those systems update.
+  scene.time.now = state.virtualNow;
 }
 
 function createButton(scene: BuildScene): void {
@@ -74,11 +91,16 @@ export function installTestTimeScalePatch(): void {
 
   proto.create = function patchedCreate(this: BuildScene, ...args: any[]) {
     const result = originalCreate.apply(this, args);
+    const state = getState(this);
+    state.virtualNow = this.time.now;
+    state.lastRawNow = this.time.now;
     createButton(this);
     return result;
   };
 
   proto.update = function patchedUpdate(this: BuildScene, ...args: any[]) {
+    const state = getState(this);
+    advanceVirtualTime(this, state);
     const result = originalUpdate.apply(this, args);
     updateButtonPosition(this);
     return result;
