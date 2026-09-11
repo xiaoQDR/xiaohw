@@ -2,35 +2,33 @@ import Phaser from 'phaser';
 import { BuildScene } from '../scenes/BuildScene';
 
 type AnyFn = (...args: any[]) => any;
+type ResourceKey = 'meat' | 'fur' | 'bait' | 'scales' | 'teeth' | 'cloth' | 'charm' | 'leather' | 'curedMeat';
 
 type TrapState = {
   sprite: Phaser.GameObjects.Image;
-  stored: number;
   readyAt: number;
+  ready: boolean;
   busy: boolean;
   badge: Phaser.GameObjects.Container;
   label: Phaser.GameObjects.Text;
 };
 
 type SceneState = {
-  meat: number;
-  fur: number;
   traps: TrapState[];
   workerBusy: WeakSet<Phaser.GameObjects.Image>;
 };
 
-const TRAP_CD_MS = 8000;
-const TRAP_CAPACITY = 3;
+const TRAP_CD_MS = 90_000;
 const states = new WeakMap<BuildScene, SceneState>();
 
-function getSceneState(scene: BuildScene): SceneState {
-  let state = states.get(scene);
-  if (!state) {
-    state = { meat: 0, fur: 0, traps: [], workerBusy: new WeakSet() };
-    states.set(scene, state);
-  }
-  return state;
-}
+const DROP_TABLE: Array<{ under: number; key: ResourceKey; name: string }> = [
+  { under: 0.50, key: 'fur', name: '毛皮' },
+  { under: 0.75, key: 'meat', name: '肉' },
+  { under: 0.85, key: 'scales', name: '鳞片' },
+  { under: 0.93, key: 'teeth', name: '牙齿' },
+  { under: 0.995, key: 'cloth', name: '布料' },
+  { under: 1.0, key: 'charm', name: '护符' },
+];
 
 function getPrivate<T>(scene: BuildScene, key: string): T | undefined {
   return (scene as unknown as Record<string, unknown>)[key] as T | undefined;
@@ -40,8 +38,21 @@ function setPrivate(scene: BuildScene, key: string, value: unknown): void {
   (scene as unknown as Record<string, unknown>)[key] = value;
 }
 
-function getWorkers(scene: BuildScene): Phaser.GameObjects.Image[] {
-  return getPrivate<Phaser.GameObjects.Image[]>(scene, 'workers') ?? [];
+function getResource(scene: BuildScene, key: ResourceKey): number {
+  return Number(getPrivate<number>(scene, key) ?? 0);
+}
+
+function addResource(scene: BuildScene, key: ResourceKey, amount: number): void {
+  setPrivate(scene, key, Math.max(0, getResource(scene, key) + amount));
+}
+
+function getState(scene: BuildScene): SceneState {
+  let state = states.get(scene);
+  if (!state) {
+    state = { traps: [], workerBusy: new WeakSet() };
+    states.set(scene, state);
+  }
+  return state;
 }
 
 function showToast(scene: BuildScene, message: string): void {
@@ -54,79 +65,89 @@ function refreshResources(scene: BuildScene): void {
   fn?.call(scene);
 }
 
+function getWorkers(scene: BuildScene): Phaser.GameObjects.Image[] {
+  return getPrivate<Phaser.GameObjects.Image[]>(scene, 'workers') ?? [];
+}
+
 function refreshTrapBadge(scene: BuildScene, trap: TrapState): void {
   if (!trap.sprite.active || !trap.label.active) return;
   if (trap.busy) {
-    trap.label.setText(`陷阱 ${trap.stored}/${TRAP_CAPACITY} · 回收中`).setColor('#ffd58a');
+    trap.label.setText('陷阱 · 回收中').setColor('#ffd58a');
     return;
   }
-  if (trap.stored >= TRAP_CAPACITY) {
-    trap.label.setText(`陷阱 ${trap.stored}/${TRAP_CAPACITY} · 点击回收`).setColor('#ffe19a');
+  if (trap.ready) {
+    trap.label.setText('陷阱 · 点击回收').setColor('#ffe19a');
     return;
   }
   const remain = Math.max(0, trap.readyAt - scene.time.now);
-  trap.label
-    .setText(trap.stored > 0 ? `陷阱 ${trap.stored}/${TRAP_CAPACITY} · 点击回收` : `陷阱 ${Math.ceil(remain / 1000)}s`)
-    .setColor(trap.stored > 0 ? '#ffe19a' : '#e8eadb');
+  trap.label.setText(`陷阱 ${Math.ceil(remain / 1000)}s`).setColor('#e8eadb');
 }
 
 function createTrapBadge(scene: BuildScene, sprite: Phaser.GameObjects.Image): Pick<TrapState, 'badge' | 'label'> {
-  const bg = scene.add.rectangle(sprite.x, sprite.y - 112, 206, 46, 0x283329, 0.92)
-    .setStrokeStyle(2, 0x738567, 1);
+  const bg = scene.add.rectangle(sprite.x, sprite.y - 112, 206, 46, 0x283329, 0.92).setStrokeStyle(2, 0x738567, 1);
   const label = scene.add.text(sprite.x, sprite.y - 112, '', {
-    fontFamily: 'system-ui, sans-serif',
-    fontSize: '17px',
-    color: '#e8eadb',
-    fontStyle: 'bold',
+    fontFamily: 'system-ui, sans-serif', fontSize: '17px', color: '#e8eadb', fontStyle: 'bold',
   }).setOrigin(0.5);
   const badge = scene.add.container(0, 0, [bg, label]).setDepth(4400);
-  const world = getPrivate<Phaser.GameObjects.Container>(scene, 'world');
-  world?.add(badge);
+  getPrivate<Phaser.GameObjects.Container>(scene, 'world')?.add(badge);
   return { badge, label };
 }
 
-function rollTrapLoot(catches: number): { meat: number; fur: number } {
-  const meat = catches * Phaser.Math.Between(2, 4);
-  let fur = 0;
-  for (let i = 0; i < catches; i += 1) {
-    if (Math.random() < 0.65) fur += 1;
-  }
-  return { meat, fur };
-}
-
-function addTrapLoot(scene: BuildScene, x: number, y: number, catches: number): void {
-  if (catches <= 0) return;
-  const state = getSceneState(scene);
-  const loot = rollTrapLoot(catches);
-  state.meat += loot.meat;
-  state.fur += loot.fur;
-  refreshResources(scene);
-
-  const popup = scene.add.text(x, y, `+${loot.meat} 肉${loot.fur > 0 ? `  +${loot.fur} 毛皮` : ''}`, {
-    fontFamily: 'system-ui, sans-serif',
-    fontSize: '21px',
-    color: '#ffe5b0',
-    fontStyle: 'bold',
-    stroke: '#3a3025',
-    strokeThickness: 4,
-  }).setOrigin(0.5).setDepth(6200);
-  scene.tweens.add({ targets: popup, y: popup.y - 44, alpha: 0, duration: 900, onComplete: () => popup.destroy() });
+function rollDrop(): { key: ResourceKey; name: string } {
+  const roll = Math.random();
+  return DROP_TABLE.find((drop) => roll < drop.under) ?? DROP_TABLE[DROP_TABLE.length - 1];
 }
 
 function removeTrap(scene: BuildScene, trap: TrapState): void {
-  const state = getSceneState(scene);
+  const state = getState(scene);
+  state.traps = state.traps.filter((candidate) => candidate !== trap);
+
   const placed = getPrivate<Array<{ id: string; col: number; row: number; sprite: Phaser.GameObjects.Image }>>(scene, 'placed') ?? [];
-  const occupied = getPrivate<Set<string>>(scene, 'occupied');
-  const placedIndex = placed.findIndex((building) => building.sprite === trap.sprite);
-  if (placedIndex >= 0) {
-    const building = placed[placedIndex];
-    occupied?.delete(`${building.col},${building.row}`);
-    placed.splice(placedIndex, 1);
+  const index = placed.findIndex((building) => building.sprite === trap.sprite);
+  if (index >= 0) {
+    const building = placed[index];
+    getPrivate<Set<string>>(scene, 'occupied')?.delete(`${building.col},${building.row}`);
+    placed.splice(index, 1);
   }
-  const trapIndex = state.traps.indexOf(trap);
-  if (trapIndex >= 0) state.traps.splice(trapIndex, 1);
+
   trap.badge.destroy(true);
   trap.sprite.destroy();
+}
+
+function collectTrap(scene: BuildScene, trap: TrapState, worker?: Phaser.GameObjects.Image): void {
+  if (!trap.ready || !trap.sprite.active) return;
+
+  const drops = new Map<ResourceKey, number>();
+  const addRoll = () => {
+    const drop = rollDrop();
+    drops.set(drop.key, (drops.get(drop.key) ?? 0) + 1);
+  };
+
+  addRoll();
+  if (getResource(scene, 'bait') >= 1) {
+    addResource(scene, 'bait', -1);
+    addRoll();
+  }
+
+  for (const [key, amount] of drops) addResource(scene, key, amount);
+  refreshResources(scene);
+
+  const text = [...drops.entries()]
+    .map(([key, amount]) => {
+      const label = DROP_TABLE.find((drop) => drop.key === key)?.name ?? key;
+      return `+${amount} ${label}`;
+    })
+    .join('  ');
+  const x = worker?.x ?? trap.sprite.x;
+  const y = (worker?.y ?? trap.sprite.y) - 64;
+  const popup = scene.add.text(x, y, text, {
+    fontFamily: 'system-ui, sans-serif', fontSize: '21px', color: '#ffe5b0', fontStyle: 'bold',
+    stroke: '#3a3025', strokeThickness: 4,
+  }).setOrigin(0.5).setDepth(6200);
+  scene.tweens.add({ targets: popup, y: popup.y - 44, alpha: 0, duration: 900, onComplete: () => popup.destroy() });
+
+  removeTrap(scene, trap);
+  showToast(scene, '陷阱已回收');
 }
 
 function collectTrapManually(scene: BuildScene, trap: TrapState): void {
@@ -134,30 +155,25 @@ function collectTrapManually(scene: BuildScene, trap: TrapState): void {
     showToast(scene, '陷阱师正在回收这个陷阱');
     return;
   }
-  if (trap.stored <= 0) {
+  if (!trap.ready) {
     const remain = Math.max(0, trap.readyAt - scene.time.now);
     showToast(scene, `陷阱还没有猎物，还需 ${Math.ceil(remain / 1000)} 秒`);
     return;
   }
-
-  const catches = trap.stored;
-  addTrapLoot(scene, trap.sprite.x, trap.sprite.y - 72, catches);
-  showToast(scene, '已回收陷阱');
-  removeTrap(scene, trap);
+  collectTrap(scene, trap);
 }
 
 function registerTrap(scene: BuildScene, sprite: Phaser.GameObjects.Image): void {
-  const state = getSceneState(scene);
   const ui = createTrapBadge(scene, sprite);
   const trap: TrapState = {
     sprite,
-    stored: 0,
     readyAt: scene.time.now + TRAP_CD_MS,
+    ready: false,
     busy: false,
     badge: ui.badge,
     label: ui.label,
   };
-  state.traps.push(trap);
+  getState(scene).traps.push(trap);
   sprite.setInteractive({ useHandCursor: true });
   sprite.on('pointerdown', (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
     event.stopPropagation();
@@ -167,12 +183,10 @@ function registerTrap(scene: BuildScene, sprite: Phaser.GameObjects.Image): void
 }
 
 function tickTraps(scene: BuildScene): void {
-  const state = getSceneState(scene);
-  for (const trap of [...state.traps]) {
+  for (const trap of getState(scene).traps) {
     if (!trap.sprite.active) continue;
-    if (trap.stored < TRAP_CAPACITY && scene.time.now >= trap.readyAt) {
-      trap.stored += 1;
-      trap.readyAt = scene.time.now + TRAP_CD_MS;
+    if (!trap.ready && scene.time.now >= trap.readyAt) {
+      trap.ready = true;
       scene.tweens.add({ targets: trap.sprite, scaleX: trap.sprite.scaleX * 1.06, scaleY: trap.sprite.scaleY * 1.06, yoyo: true, duration: 100 });
     }
     refreshTrapBadge(scene, trap);
@@ -180,62 +194,19 @@ function tickTraps(scene: BuildScene): void {
 }
 
 function getCampPoint(scene: BuildScene): Phaser.Math.Vector2 {
-  const gridToWorld = (scene as unknown as { gridToWorld?: (col: number, row: number) => Phaser.Math.Vector2 }).gridToWorld;
-  if (gridToWorld) return gridToWorld.call(scene, 4, 3);
-  return new Phaser.Math.Vector2(540, 580);
-}
-
-function deliverTrapLoot(scene: BuildScene, worker: Phaser.GameObjects.Image, trap: TrapState): void {
-  const state = getSceneState(scene);
-  const catches = trap.stored;
-  if (catches <= 0) {
-    trap.busy = false;
-    state.workerBusy.delete(worker);
-    return;
-  }
-
-  const loot = rollTrapLoot(catches);
-  const camp = getCampPoint(scene);
-  scene.tweens.add({
-    targets: worker,
-    x: camp.x + Phaser.Math.Between(55, 105),
-    y: camp.y + Phaser.Math.Between(20, 55),
-    angle: 0,
-    duration: Phaser.Math.Between(1200, 1700),
-    ease: 'Sine.InOut',
-    onComplete: () => {
-      state.meat += loot.meat;
-      state.fur += loot.fur;
-      refreshResources(scene);
-
-      const popup = scene.add.text(worker.x, worker.y - 64, `+${loot.meat} 肉${loot.fur > 0 ? `  +${loot.fur} 毛皮` : ''}`, {
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: '21px',
-        color: '#ffe5b0',
-        fontStyle: 'bold',
-        stroke: '#3a3025',
-        strokeThickness: 4,
-      }).setOrigin(0.5).setDepth(6200);
-      scene.tweens.add({ targets: popup, y: popup.y - 44, alpha: 0, duration: 900, onComplete: () => popup.destroy() });
-
-      state.workerBusy.delete(worker);
-      worker.clearTint();
-      removeTrap(scene, trap);
-      showToast(scene, '陷阱师带回猎物，陷阱已消耗');
-    },
-  });
+  const fn = (scene as unknown as { gridToWorld?: (col: number, row: number) => Phaser.Math.Vector2 }).gridToWorld;
+  return fn ? fn.call(scene, 4, 3) : new Phaser.Math.Vector2(540, 580);
 }
 
 function dispatchTrappers(scene: BuildScene): void {
-  const state = getSceneState(scene);
-  const readyTraps = state.traps.filter((trap) => trap.stored > 0 && !trap.busy && trap.sprite.active);
-  if (readyTraps.length === 0) return;
+  const state = getState(scene);
+  const ready = state.traps.filter((trap) => trap.ready && !trap.busy && trap.sprite.active);
+  if (ready.length === 0) return;
 
   const trappers = getWorkers(scene).filter((worker) => worker.active && worker.getData('job') === 'trapper' && !state.workerBusy.has(worker));
   for (const worker of trappers) {
-    const trap = readyTraps.shift();
+    const trap = ready.shift();
     if (!trap) break;
-
     trap.busy = true;
     state.workerBusy.add(worker);
     scene.tweens.killTweensOf(worker);
@@ -249,15 +220,43 @@ function dispatchTrappers(scene: BuildScene): void {
       ease: 'Sine.InOut',
       onComplete: () => {
         if (!worker.active || !trap.sprite.active) {
-          trap.busy = false;
           state.workerBusy.delete(worker);
           return;
         }
-        scene.tweens.add({ targets: worker, angle: -8, yoyo: true, repeat: 3, duration: 120 });
-        scene.time.delayedCall(650, () => deliverTrapLoot(scene, worker, trap));
+        scene.time.delayedCall(650, () => {
+          const camp = getCampPoint(scene);
+          scene.tweens.add({
+            targets: worker,
+            x: camp.x + Phaser.Math.Between(55, 105),
+            y: camp.y + Phaser.Math.Between(20, 55),
+            duration: Phaser.Math.Between(1200, 1700),
+            ease: 'Sine.InOut',
+            onComplete: () => {
+              collectTrap(scene, trap, worker);
+              state.workerBusy.delete(worker);
+              worker.clearTint();
+            },
+          });
+        });
       },
     });
   }
+}
+
+function formatResourceLine(scene: BuildScene): string {
+  const wood = Number(getPrivate<number>(scene, 'wood') ?? 0);
+  const population = Number(getPrivate<number>(scene, 'population') ?? 0);
+  const populationCap = Number(getPrivate<number>(scene, 'populationCap') ?? 0);
+  const primary = `木材 ${wood}   肉 ${getResource(scene, 'meat')}   毛皮 ${getResource(scene, 'fur')}   人口 ${population}/${populationCap}`;
+  const extras: string[] = [];
+  const labels: Array<[ResourceKey, string]> = [
+    ['bait', '诱饵'], ['leather', '皮革'], ['curedMeat', '熏肉'], ['scales', '鳞片'], ['teeth', '牙齿'], ['cloth', '布料'], ['charm', '护符'],
+  ];
+  for (const [key, label] of labels) {
+    const value = getResource(scene, key);
+    if (value > 0) extras.push(`${label} ${value}`);
+  }
+  return extras.length > 0 ? `${primary}\n${extras.join('   ')}` : primary;
 }
 
 export function installTrapSystemPatch(): void {
@@ -273,7 +272,10 @@ export function installTrapSystemPatch(): void {
 
   proto.create = function patchedCreate(this: BuildScene, ...args: any[]) {
     const result = originalCreate.apply(this, args);
-    getSceneState(this);
+    for (const key of ['meat', 'fur', 'bait', 'scales', 'teeth', 'cloth', 'charm', 'leather', 'curedMeat']) {
+      if (getPrivate<number>(this, key) == null) setPrivate(this, key, 0);
+    }
+    getState(this);
     return result;
   };
 
@@ -290,21 +292,14 @@ export function installTrapSystemPatch(): void {
     if (def?.id === 'trap') {
       const placed = getPrivate<Array<{ id: string; sprite: Phaser.GameObjects.Image }>>(this, 'placed') ?? [];
       const latest = [...placed].reverse().find((building) => building.id === 'trap');
-      if (latest && !getSceneState(this).traps.some((trap) => trap.sprite === latest.sprite)) registerTrap(this, latest.sprite);
+      if (latest && !getState(this).traps.some((trap) => trap.sprite === latest.sprite)) registerTrap(this, latest.sprite);
     }
     return result;
   };
 
   proto.refreshResources = function patchedRefreshResources(this: BuildScene, ...args: any[]) {
     const result = originalRefreshResources.apply(this, args);
-    const state = getSceneState(this);
-    const text = getPrivate<Phaser.GameObjects.Text>(this, 'resourceText');
-    const wood = Number(getPrivate<number>(this, 'wood') ?? 0);
-    const population = Number(getPrivate<number>(this, 'population') ?? 0);
-    const populationCap = Number(getPrivate<number>(this, 'populationCap') ?? 0);
-    text?.setText(`木材 ${wood}   肉 ${state.meat}   毛皮 ${state.fur}   人口 ${population}/${populationCap}`);
-    setPrivate(this, 'meat', state.meat);
-    setPrivate(this, 'fur', state.fur);
+    getPrivate<Phaser.GameObjects.Text>(this, 'resourceText')?.setText(formatResourceLine(this));
     return result;
   };
 }
