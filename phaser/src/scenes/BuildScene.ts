@@ -10,6 +10,8 @@ const GRID_ORIGIN_X = DESIGN_W / 2;
 const GRID_ORIGIN_Y = 350;
 const MENU_H = 430;
 const TREE_CD_MS = 5000;
+const POPULATION_ARRIVAL_MS = 8000;
+const WORKER_WOOD_YIELD = 1;
 
 type BuildingId = 'trap' | 'cart' | 'hut' | 'lodge' | 'tradingPost' | 'tannery' | 'smokehouse' | 'workshop' | 'steelworks' | 'armoury';
 
@@ -55,10 +57,15 @@ export class BuildScene extends Phaser.Scene {
   private cameraDragStart: Phaser.Math.Vector2 | null = null;
   private cameraScrollStart: Phaser.Math.Vector2 | null = null;
   private wood = 0;
+  private population = 0;
+  private populationCap = 0;
+  private nextPopulationAt = Number.POSITIVE_INFINITY;
   private treeReadyAt = 0;
   private treeSprite!: Phaser.GameObjects.Image;
   private treeStatus!: Phaser.GameObjects.Text;
   private treeBadge!: Phaser.GameObjects.Container;
+  private forestTrees: Phaser.GameObjects.Image[] = [];
+  private workers: Phaser.GameObjects.Image[] = [];
 
   constructor() {
     super('build');
@@ -75,13 +82,16 @@ export class BuildScene extends Phaser.Scene {
     this.load.svg('building-workshop', 'assets/buildings/workshop.svg', { width: 300, height: 260 });
     this.load.svg('building-steelworks', 'assets/buildings/steelworks.svg', { width: 300, height: 270 });
     this.load.svg('building-armoury', 'assets/buildings/armoury.svg', { width: 300, height: 270 });
-    this.load.svg('harvest-tree', 'assets/tree.svg', { width: 320, height: 360 });
+    this.load.svg('harvest-tree', 'assets/tree.svg', { width: 420, height: 380 });
+    this.load.svg('forest-tree', 'assets/forest-tree.svg', { width: 180, height: 220 });
+    this.load.svg('worker', 'assets/worker.svg', { width: 96, height: 140 });
   }
 
   create(): void {
     this.cameras.main.setBackgroundColor('#a9c783');
     this.world = this.add.container(0, 0);
     this.drawGround();
+    this.createPerimeterForest();
     this.drawGrid();
     this.createHarvestTree();
     this.createTopBar();
@@ -99,6 +109,7 @@ export class BuildScene extends Phaser.Scene {
   update(): void {
     this.updateUiAnchors();
     this.updateTreeStatus();
+    this.updatePopulation();
   }
 
   private resizeViewport(gameSize: Phaser.Structs.Size): void {
@@ -118,14 +129,39 @@ export class BuildScene extends Phaser.Scene {
   private drawGround(): void {
     const g = this.add.graphics();
     g.fillStyle(0x9fbe79, 1);
-    g.fillRect(-900, -300, DESIGN_W + 1800, DESIGN_H + 1200);
-    for (let i = 0; i < 30; i += 1) {
-      const x = Phaser.Math.Between(-300, DESIGN_W + 300);
-      const y = Phaser.Math.Between(220, DESIGN_H - MENU_H - 40);
-      g.fillStyle(i % 2 === 0 ? 0x93b46f : 0xa8c986, 0.55);
+    g.fillRect(-1000, -500, DESIGN_W + 2000, DESIGN_H + 1500);
+    for (let i = 0; i < 42; i += 1) {
+      const x = Phaser.Math.Between(-400, DESIGN_W + 400);
+      const y = Phaser.Math.Between(180, DESIGN_H - MENU_H - 20);
+      g.fillStyle(i % 2 === 0 ? 0x93b46f : 0xa8c986, 0.5);
       g.fillCircle(x, y, Phaser.Math.Between(8, 22));
     }
     this.world.add(g);
+  }
+
+  private createPerimeterForest(): void {
+    const points: Phaser.Math.Vector2[] = [];
+    const addTree = (col: number, row: number, ox = 0, oy = 0) => {
+      const p = this.gridToWorld(col, row);
+      points.push(new Phaser.Math.Vector2(p.x + ox, p.y + oy));
+    };
+
+    for (let i = -2; i <= GRID_COLS + 1; i += 2) {
+      addTree(i, -3, Phaser.Math.Between(-18, 18), Phaser.Math.Between(-18, 18));
+      addTree(i, GRID_ROWS + 2, Phaser.Math.Between(-18, 18), Phaser.Math.Between(-18, 18));
+    }
+    for (let i = -1; i <= GRID_ROWS; i += 2) {
+      addTree(-4, i, Phaser.Math.Between(-18, 18), Phaser.Math.Between(-18, 18));
+      addTree(GRID_COLS + 3, i, Phaser.Math.Between(-18, 18), Phaser.Math.Between(-18, 18));
+    }
+
+    points.forEach((p, index) => {
+      const tree = this.add.image(p.x, p.y - 76, 'forest-tree')
+        .setDisplaySize(150 + (index % 3) * 10, 184 + (index % 3) * 12)
+        .setDepth(90 + Math.round(p.y / 20));
+      this.world.add(tree);
+      this.forestTrees.push(tree);
+    });
   }
 
   private drawGrid(): void {
@@ -144,22 +180,19 @@ export class BuildScene extends Phaser.Scene {
     const treeCol = 4;
     const treeRow = 3;
     const p = this.gridToWorld(treeCol, treeRow);
-    this.treeSprite = this.add.image(p.x, p.y - 120, 'harvest-tree')
-      .setDisplaySize(320, 360)
-      .setDepth(310)
+    this.treeSprite = this.add.image(p.x, p.y - 122, 'harvest-tree')
+      .setDisplaySize(420, 380)
+      .setDepth(315)
       .setInteractive({ useHandCursor: true });
     this.world.add(this.treeSprite);
-    this.occupied.add('4,3');
-    this.occupied.add('3,3');
-    this.occupied.add('4,2');
-    this.occupied.add('3,2');
+    ['4,3', '3,3', '4,2', '3,2'].forEach((key) => this.occupied.add(key));
 
-    const badgeBg = this.add.rectangle(p.x, p.y - 322, 230, 58, 0x253226, 0.9)
+    const badgeBg = this.add.rectangle(p.x + 8, p.y - 338, 250, 58, 0x253226, 0.9)
       .setStrokeStyle(2, 0x78906a, 1);
-    this.treeStatus = this.add.text(p.x, p.y - 322, '', {
-      fontFamily: 'system-ui, sans-serif', fontSize: '23px', color: '#f5edd9', fontStyle: 'bold',
+    this.treeStatus = this.add.text(p.x + 8, p.y - 338, '', {
+      fontFamily: 'system-ui, sans-serif', fontSize: '22px', color: '#f5edd9', fontStyle: 'bold',
     }).setOrigin(0.5);
-    this.treeBadge = this.add.container(0, 0, [badgeBg, this.treeStatus]).setDepth(420);
+    this.treeBadge = this.add.container(0, 0, [badgeBg, this.treeStatus]).setDepth(430);
     this.world.add(this.treeBadge);
 
     this.treeReadyAt = this.time.now + TREE_CD_MS;
@@ -170,12 +203,12 @@ export class BuildScene extends Phaser.Scene {
     if (!this.treeStatus) return;
     const remaining = Math.max(0, this.treeReadyAt - this.time.now);
     if (remaining <= 0) {
-      this.treeStatus.setText(`木材 +${this.getWoodYield()} · 点击拾取`).setColor('#f5e7a6');
+      this.treeStatus.setText(`手动采集 +${this.getWoodYield()}`).setColor('#f5e7a6');
       this.treeSprite.clearTint();
       return;
     }
-    this.treeStatus.setText(`木材生长中 ${Math.ceil(remaining / 1000)}s`).setColor('#d4ddca');
-    this.treeSprite.setTint(0xdce8d2);
+    this.treeStatus.setText(`火堆旁采集 ${Math.ceil(remaining / 1000)}s`).setColor('#d4ddca');
+    this.treeSprite.setTint(0xe4eddc);
   }
 
   private collectTreeWood(): void {
@@ -184,17 +217,101 @@ export class BuildScene extends Phaser.Scene {
     this.wood += amount;
     this.treeReadyAt = this.time.now + TREE_CD_MS;
     this.refreshResources();
-    this.tweens.add({ targets: this.treeSprite, scaleX: 1.06, scaleY: 1.06, yoyo: true, duration: 110, ease: 'Sine.Out' });
-    const popup = this.add.text(this.treeSprite.x, this.treeSprite.y - 185, `+${amount} 木材`, {
-      fontFamily: 'system-ui, sans-serif', fontSize: '28px', color: '#fff1a8', fontStyle: 'bold',
-      stroke: '#30412d', strokeThickness: 5,
-    }).setOrigin(0.5).setDepth(450);
-    this.world.add(popup);
-    this.tweens.add({ targets: popup, y: popup.y - 55, alpha: 0, duration: 850, onComplete: () => popup.destroy() });
+    this.tweens.add({ targets: this.treeSprite, scaleX: 1.03, scaleY: 1.03, yoyo: true, duration: 110, ease: 'Sine.Out' });
+    this.showWoodPopup(this.treeSprite.x + 86, this.treeSprite.y + 70, amount);
   }
 
   private getWoodYield(): number {
     return this.placed.some((b) => b.id === 'cart') ? 50 : 10;
+  }
+
+  private updatePopulation(): void {
+    if (this.population >= this.populationCap) {
+      this.nextPopulationAt = Number.POSITIVE_INFINITY;
+      return;
+    }
+    if (!Number.isFinite(this.nextPopulationAt)) {
+      this.nextPopulationAt = this.time.now + POPULATION_ARRIVAL_MS;
+      return;
+    }
+    if (this.time.now < this.nextPopulationAt) return;
+    this.population += 1;
+    this.nextPopulationAt = this.population < this.populationCap ? this.time.now + POPULATION_ARRIVAL_MS : Number.POSITIVE_INFINITY;
+    this.spawnWorker();
+    this.refreshResources();
+    this.showToast('有一个流浪者加入了营地');
+  }
+
+  private recalculatePopulationCap(): void {
+    const hutCount = this.placed.filter((b) => b.id === 'hut').length;
+    this.populationCap = hutCount * 4;
+    if (this.population < this.populationCap && !Number.isFinite(this.nextPopulationAt)) {
+      this.nextPopulationAt = this.time.now + POPULATION_ARRIVAL_MS;
+    }
+    this.refreshResources();
+  }
+
+  private spawnWorker(): void {
+    const camp = this.gridToWorld(4, 3);
+    const worker = this.add.image(camp.x + Phaser.Math.Between(-55, 55), camp.y + 40, 'worker')
+      .setDisplaySize(54, 79)
+      .setDepth(700);
+    this.world.add(worker);
+    this.workers.push(worker);
+    this.startWorkerLoop(worker, Phaser.Math.Between(300, 1200));
+  }
+
+  private startWorkerLoop(worker: Phaser.GameObjects.Image, delay = 0): void {
+    this.time.delayedCall(delay, () => {
+      if (!worker.active || this.forestTrees.length === 0) return;
+      const target = Phaser.Utils.Array.GetRandom(this.forestTrees);
+      const targetX = target.x + Phaser.Math.Between(-24, 24);
+      const targetY = target.y + 70;
+      worker.setDepth(700 + Math.round(worker.y / 20));
+      this.tweens.add({
+        targets: worker,
+        x: targetX,
+        y: targetY,
+        duration: Phaser.Math.Between(1700, 2300),
+        ease: 'Sine.InOut',
+        onComplete: () => {
+          if (!worker.active) return;
+          this.tweens.add({ targets: worker, angle: -6, yoyo: true, repeat: 3, duration: 130 });
+          this.time.delayedCall(850, () => this.returnWorkerToCamp(worker));
+        },
+      });
+    });
+  }
+
+  private returnWorkerToCamp(worker: Phaser.GameObjects.Image): void {
+    if (!worker.active) return;
+    const camp = this.gridToWorld(4, 3);
+    const deliverX = camp.x + Phaser.Math.Between(55, 105);
+    const deliverY = camp.y + Phaser.Math.Between(20, 55);
+    this.tweens.add({
+      targets: worker,
+      x: deliverX,
+      y: deliverY,
+      angle: 0,
+      duration: Phaser.Math.Between(1500, 2100),
+      ease: 'Sine.InOut',
+      onComplete: () => {
+        if (!worker.active) return;
+        this.wood += WORKER_WOOD_YIELD;
+        this.refreshResources();
+        this.showWoodPopup(deliverX, deliverY - 55, WORKER_WOOD_YIELD);
+        this.startWorkerLoop(worker, Phaser.Math.Between(500, 1100));
+      },
+    });
+  }
+
+  private showWoodPopup(x: number, y: number, amount: number): void {
+    const popup = this.add.text(x, y, `+${amount} 木材`, {
+      fontFamily: 'system-ui, sans-serif', fontSize: '24px', color: '#fff1a8', fontStyle: 'bold',
+      stroke: '#30412d', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(4500);
+    this.world.add(popup);
+    this.tweens.add({ targets: popup, y: popup.y - 45, alpha: 0, duration: 720, onComplete: () => popup.destroy() });
   }
 
   private createTopBar(): void {
@@ -210,7 +327,7 @@ export class BuildScene extends Phaser.Scene {
   }
 
   private refreshResources(): void {
-    if (this.resourceText) this.resourceText.setText(`木材 ${this.wood}   人口 0`);
+    if (this.resourceText) this.resourceText.setText(`木材 ${this.wood}   人口 ${this.population}/${this.populationCap}`);
   }
 
   private createBottomMenu(): void {
@@ -343,6 +460,7 @@ export class BuildScene extends Phaser.Scene {
     for (let y = 0; y < def.footprint[1]; y += 1) {
       for (let x = 0; x < def.footprint[0]; x += 1) this.occupied.add(`${col + x},${row + y}`);
     }
+    if (def.id === 'hut') this.recalculatePopulationCap();
     if (animate) {
       const sx = sprite.scaleX;
       const sy = sprite.scaleY;
