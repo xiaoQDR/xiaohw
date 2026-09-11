@@ -3,9 +3,11 @@ import './style.css';
 import { BuildScene } from './scenes/BuildScene';
 import { installJobPanelPatch } from './ui/jobPanelPatch';
 import { installTrapSystemPatch } from './ui/trapSystemPatch';
+import { installEventSystemPatch } from './ui/eventSystemPatch';
 
 installJobPanelPatch();
 installTrapSystemPatch();
+installEventSystemPatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
