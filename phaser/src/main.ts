@@ -4,10 +4,12 @@ import { BuildScene } from './scenes/BuildScene';
 import { installJobPanelPatch } from './ui/jobPanelPatch';
 import { installTrapSystemPatch } from './ui/trapSystemPatch';
 import { installEventSystemPatch } from './ui/eventSystemPatch';
+import { installOriginalBalancePatch } from './ui/originalBalancePatch';
 
 installJobPanelPatch();
 installTrapSystemPatch();
 installEventSystemPatch();
+installOriginalBalancePatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
