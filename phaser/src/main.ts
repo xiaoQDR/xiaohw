@@ -2,8 +2,10 @@ import Phaser from 'phaser';
 import './style.css';
 import { BuildScene } from './scenes/BuildScene';
 import { installJobPanelPatch } from './ui/jobPanelPatch';
+import { installTrapSystemPatch } from './ui/trapSystemPatch';
 
 installJobPanelPatch();
+installTrapSystemPatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
