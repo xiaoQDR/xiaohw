@@ -22,6 +22,7 @@ type MenuState = {
   startY: number;
   contentStartX: number;
   swiping: boolean;
+  externalY?: number;
 };
 
 const MENU_H = 430;
@@ -77,17 +78,23 @@ function applyScroll(state: MenuState, value: number): void {
   state.scrollX = Phaser.Math.Clamp(value, -state.maxScroll, 0);
   state.content.x = state.scrollX;
 }
+function positionMenu(scene: BuildScene, state: MenuState, y: number): void {
+  const view = scene.cameras.main.worldView;
+  state.externalY = y;
+  state.menu.setPosition(view.left, y);
+  state.maskShape.clear().fillStyle(0xffffff, 1).fillRect(view.left + SIDE_PAD, y + VIEW_Y, state.viewportWidth, CARD_H + 12);
+}
 function layoutForView(scene: BuildScene, state: MenuState): void {
   const view = scene.cameras.main.worldView;
   const width = view.width;
-  state.menu.setPosition(view.left, view.bottom - MENU_H);
   state.bg.setPosition(width / 2, MENU_H / 2).setSize(width, MENU_H);
   state.topLine.setPosition(width / 2, 3).setSize(width, 6);
   state.title.setPosition(30, 18);
   state.hint.setPosition(width - 30, 27);
   state.viewportWidth = Math.max(420, width - SIDE_PAD * 2);
   state.viewport.setPosition(SIDE_PAD, VIEW_Y);
-  state.maskShape.clear().fillStyle(0xffffff, 1).fillRect(view.left + SIDE_PAD, view.bottom - MENU_H + VIEW_Y, state.viewportWidth, CARD_H + 12);
+  const y = state.externalY ?? (view.bottom - MENU_H);
+  positionMenu(scene, state, y);
   const cardCount = state.content.list.length / 6;
   const contentWidth = Math.max(0, cardCount * CARD_W + Math.max(0, cardCount - 1) * GAP);
   state.maxScroll = Math.max(0, contentWidth - state.viewportWidth);
@@ -109,7 +116,6 @@ function rebuildCards(scene: BuildScene, state: MenuState, force = false): void 
       scene.input.setDraggable(card, true);
       card.setData('buildingDef', def);
     }
-
     const icon = scene.add.image(x + CARD_W / 2, 82, def.texture).setDisplaySize(112, 112).setAlpha(capped ? 0.45 : 1);
     const name = scene.add.text(x + 18, 144, def.name, {
       fontFamily: 'system-ui, sans-serif', fontSize: '28px', color: capped ? '#9da59a' : '#fff7df', fontStyle: 'bold',
@@ -150,11 +156,11 @@ function createMenu(scene: BuildScene): MenuState {
   viewport.setMask(maskShape.createGeometryMask());
   setPrivate(scene, 'menu', menu);
   setPrivate(scene, 'refreshBuildMenuNow', () => rebuildCards(scene, state, true));
+  setPrivate(scene, 'setBuildMenuY', (y: number) => positionMenu(scene, state, y));
 
   scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
     const wp = scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const view = scene.cameras.main.worldView;
-    if (wp.y < view.bottom - MENU_H) return;
+    if (wp.y < state.menu.y || wp.y > state.menu.y + MENU_H) return;
     state.pointerId = pointer.id; state.startX = pointer.x; state.startY = pointer.y; state.contentStartX = state.scrollX; state.swiping = false;
   });
   scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
