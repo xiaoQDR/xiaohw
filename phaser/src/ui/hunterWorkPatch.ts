@@ -3,11 +3,22 @@ import { BuildScene } from '../scenes/BuildScene';
 
 type AnyFn = (...args: any[]) => any;
 
+type HunterPhase = 'idle' | 'toHunt' | 'hunting' | 'returning' | 'delivering';
+
+type HunterRuntime = {
+  phase: HunterPhase;
+  token: number;
+};
+
 type HunterState = {
-  busy: WeakSet<Phaser.GameObjects.Image>;
+  workers: WeakMap<Phaser.GameObjects.Image, HunterRuntime>;
+  zone?: Phaser.GameObjects.Container;
+  huntPoints: Phaser.Math.Vector2[];
 };
 
 const states = new WeakMap<BuildScene, HunterState>();
+const HUNTER_TINT = 0x8f6a42;
+const HUNT_GROUND_CELLS = ['7,1', '8,1', '7,2', '8,2'];
 
 function getPrivate<T>(scene: BuildScene, key: string): T | undefined {
   return (scene as unknown as Record<string, unknown>)[key] as T | undefined;
@@ -16,7 +27,7 @@ function getPrivate<T>(scene: BuildScene, key: string): T | undefined {
 function getState(scene: BuildScene): HunterState {
   let state = states.get(scene);
   if (!state) {
-    state = { busy: new WeakSet() };
+    state = { workers: new WeakMap(), huntPoints: [] };
     states.set(scene, state);
   }
   return state;
@@ -27,17 +38,77 @@ function getLodge(scene: BuildScene): Phaser.GameObjects.Image | undefined {
   return placed.find((building) => building.id === 'lodge')?.sprite;
 }
 
-function getForestTarget(scene: BuildScene): Phaser.GameObjects.Image | undefined {
-  const trees = (getPrivate<Phaser.GameObjects.Image[]>(scene, 'forestTrees') ?? []).filter((tree) => tree.active);
-  return trees.length > 0 ? Phaser.Utils.Array.GetRandom(trees) : undefined;
+function gridPoint(scene: BuildScene, col: number, row: number): Phaser.Math.Vector2 {
+  const fn = (scene as unknown as { gridToWorld?: (col: number, row: number) => Phaser.Math.Vector2 }).gridToWorld;
+  return fn ? fn.call(scene, col, row) : new Phaser.Math.Vector2(850, 560);
+}
+
+function createHuntingGround(scene: BuildScene): void {
+  const state = getState(scene);
+  if (state.zone) return;
+
+  const center = gridPoint(scene, 7.5, 1.5);
+  const ground = scene.add.graphics();
+  ground.fillStyle(0x728c55, 0.96);
+  ground.fillEllipse(center.x, center.y + 24, 360, 205);
+  ground.lineStyle(5, 0x52663f, 0.9);
+  ground.strokeEllipse(center.x, center.y + 24, 360, 205);
+
+  const inner = scene.add.graphics();
+  inner.fillStyle(0x8aa56a, 0.9);
+  inner.fillEllipse(center.x - 54, center.y + 8, 105, 58);
+  inner.fillEllipse(center.x + 62, center.y + 52, 120, 62);
+  inner.fillStyle(0x5d7549, 0.95);
+  inner.fillCircle(center.x + 118, center.y - 20, 34);
+  inner.fillCircle(center.x - 118, center.y + 34, 30);
+
+  const signBg = scene.add.rectangle(center.x, center.y - 108, 210, 54, 0x39452f, 0.95)
+    .setStrokeStyle(2, 0x9aae7b, 1);
+  const sign = scene.add.text(center.x, center.y - 109, '狩猎场', {
+    fontFamily: 'system-ui, sans-serif',
+    fontSize: '23px',
+    color: '#fff0cc',
+    fontStyle: 'bold',
+  }).setOrigin(0.5);
+
+  const zone = scene.add.container(0, 0, [ground, inner, signBg, sign]).setDepth(145);
+  getPrivate<Phaser.GameObjects.Container>(scene, 'world')?.add(zone);
+  state.zone = zone;
+  state.huntPoints = [
+    new Phaser.Math.Vector2(center.x - 105, center.y + 26),
+    new Phaser.Math.Vector2(center.x - 28, center.y + 70),
+    new Phaser.Math.Vector2(center.x + 52, center.y + 18),
+    new Phaser.Math.Vector2(center.x + 118, center.y + 64),
+  ];
+
+  const occupied = getPrivate<Set<string>>(scene, 'occupied');
+  HUNT_GROUND_CELLS.forEach((key) => occupied?.add(key));
 }
 
 function isHunter(worker: Phaser.GameObjects.Image): boolean {
   return worker.active && worker.getData('job') === 'hunter';
 }
 
+function getRuntime(scene: BuildScene, worker: Phaser.GameObjects.Image): HunterRuntime {
+  const state = getState(scene);
+  let runtime = state.workers.get(worker);
+  if (!runtime) {
+    runtime = { phase: 'idle', token: 0 };
+    state.workers.set(worker, runtime);
+  }
+  return runtime;
+}
+
+function invalidateHunter(scene: BuildScene, worker: Phaser.GameObjects.Image): void {
+  const runtime = getRuntime(scene, worker);
+  runtime.token += 1;
+  runtime.phase = 'idle';
+  scene.tweens.killTweensOf(worker);
+  if (worker.active) worker.clearTint();
+}
+
 function showDelivery(scene: BuildScene, lodge: Phaser.GameObjects.Image, worker: Phaser.GameObjects.Image): void {
-  const popup = scene.add.text(worker.x, worker.y - 58, '交付猎物', {
+  const popup = scene.add.text(worker.x, worker.y - 58, '猎人交付', {
     fontFamily: 'system-ui, sans-serif',
     fontSize: '19px',
     color: '#ffe3a8',
@@ -45,77 +116,59 @@ function showDelivery(scene: BuildScene, lodge: Phaser.GameObjects.Image, worker
     stroke: '#4a3627',
     strokeThickness: 4,
   }).setOrigin(0.5).setDepth(6500);
-  scene.tweens.add({
-    targets: popup,
-    y: popup.y - 36,
-    alpha: 0,
-    duration: 850,
-    onComplete: () => popup.destroy(),
-  });
-  scene.tweens.add({
-    targets: lodge,
-    scaleX: lodge.scaleX * 1.025,
-    scaleY: lodge.scaleY * 1.025,
-    yoyo: true,
-    duration: 100,
-  });
+  scene.tweens.add({ targets: popup, y: popup.y - 36, alpha: 0, duration: 850, onComplete: () => popup.destroy() });
+  scene.tweens.add({ targets: lodge, scaleX: lodge.scaleX * 1.025, scaleY: lodge.scaleY * 1.025, yoyo: true, duration: 100 });
 }
 
 function startHunterLoop(scene: BuildScene, worker: Phaser.GameObjects.Image): void {
   if (!isHunter(worker)) return;
   const state = getState(scene);
-  if (state.busy.has(worker)) return;
+  const runtime = getRuntime(scene, worker);
+  if (runtime.phase !== 'idle') return;
 
   const lodge = getLodge(scene);
-  const tree = getForestTarget(scene);
-  if (!lodge || !tree) return;
+  if (!lodge || state.huntPoints.length === 0) return;
 
-  state.busy.add(worker);
+  runtime.phase = 'toHunt';
+  runtime.token += 1;
+  const token = runtime.token;
   scene.tweens.killTweensOf(worker);
-  worker.clearTint();
+  worker.setTint(HUNTER_TINT);
 
-  const huntX = tree.x + Phaser.Math.Between(-34, 34);
-  const huntY = tree.y + Phaser.Math.Between(42, 72);
-
+  const point = Phaser.Utils.Array.GetRandom(state.huntPoints);
   scene.tweens.add({
     targets: worker,
-    x: huntX,
-    y: huntY,
+    x: point.x + Phaser.Math.Between(-24, 24),
+    y: point.y + Phaser.Math.Between(-16, 22),
     duration: Phaser.Math.Between(1700, 2400),
     ease: 'Sine.InOut',
     onComplete: () => {
-      if (!isHunter(worker)) {
-        state.busy.delete(worker);
-        return;
-      }
-      worker.setTint(0xb8b39b);
+      if (!isHunter(worker) || runtime.token !== token) return;
+      runtime.phase = 'hunting';
+      worker.setTint(0x6f593c);
       scene.time.delayedCall(1500, () => {
-        if (!isHunter(worker)) {
-          worker.clearTint();
-          state.busy.delete(worker);
-          return;
-        }
-        worker.clearTint();
+        if (!isHunter(worker) || runtime.token !== token) return;
         const currentLodge = getLodge(scene);
         if (!currentLodge) {
-          state.busy.delete(worker);
+          runtime.phase = 'idle';
           return;
         }
+        runtime.phase = 'returning';
+        worker.setTint(HUNTER_TINT);
         scene.tweens.add({
           targets: worker,
-          x: currentLodge.x + Phaser.Math.Between(-54, 54),
+          x: currentLodge.x + Phaser.Math.Between(-50, 50),
           y: currentLodge.y + 58,
           duration: Phaser.Math.Between(1700, 2400),
           ease: 'Sine.InOut',
           onComplete: () => {
-            if (!isHunter(worker)) {
-              state.busy.delete(worker);
-              return;
-            }
+            if (!isHunter(worker) || runtime.token !== token) return;
+            runtime.phase = 'delivering';
             showDelivery(scene, currentLodge, worker);
-            scene.time.delayedCall(700, () => {
-              state.busy.delete(worker);
-              if (isHunter(worker)) startHunterLoop(scene, worker);
+            scene.time.delayedCall(650, () => {
+              if (!isHunter(worker) || runtime.token !== token) return;
+              runtime.phase = 'idle';
+              startHunterLoop(scene, worker);
             });
           },
         });
@@ -127,7 +180,14 @@ function startHunterLoop(scene: BuildScene, worker: Phaser.GameObjects.Image): v
 function tickHunters(scene: BuildScene): void {
   const workers = getPrivate<Phaser.GameObjects.Image[]>(scene, 'workers') ?? [];
   for (const worker of workers) {
-    if (isHunter(worker)) startHunterLoop(scene, worker);
+    if (!worker.active) continue;
+    const runtime = getRuntime(scene, worker);
+    if (isHunter(worker)) {
+      worker.setTint(HUNTER_TINT);
+      if (runtime.phase === 'idle') startHunterLoop(scene, worker);
+    } else if (runtime.phase !== 'idle') {
+      invalidateHunter(scene, worker);
+    }
   }
 }
 
@@ -143,6 +203,7 @@ export function installHunterWorkPatch(): void {
   proto.create = function patchedCreate(this: BuildScene, ...args: any[]) {
     const result = originalCreate.apply(this, args);
     getState(this);
+    createHuntingGround(this);
     return result;
   };
 
