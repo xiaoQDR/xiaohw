@@ -74,13 +74,17 @@ function refreshUi(scene: AnyBuild, state: UiState): void {
 
   const data = getStarshipState(scene);
   const ready = data.hull >= 3 && data.engine >= 3;
-  state.badge.setText(ready ? 'OLD STARSHIP · 可起飞' : 'OLD STARSHIP · 修复中');
+  const completed = Boolean(scene.starshipCompleted);
+  state.badge.setText(completed ? 'OLD STARSHIP · 主线通关' : ready ? 'OLD STARSHIP · 可起飞' : 'OLD STARSHIP · 修复中');
   state.hullText.setText(`船体等级  ${data.hull}/3`);
   state.engineText.setText(`引擎等级  ${data.engine}/3`);
   state.hullCostText.setText(data.hull >= 3 ? '船体已完成' : `升级消耗：${costLabel(HULL_COSTS[data.hull])}`);
   state.engineCostText.setText(data.engine >= 3 ? '引擎已完成' : `升级消耗：${costLabel(ENGINE_COSTS[data.engine])}`);
   state.launchBg.setFillStyle(ready ? 0x6f8e59 : 0x465048, 1);
-  state.launchText.setText(ready ? '起飞' : '尚未完成修复');
+  state.launchText.setText(completed ? '再次起飞' : ready ? '起飞' : '尚未完成修复');
+  if (completed) state.ship.setTint(0xe6f1e8);
+  else if (ready) state.ship.setTint(0xdbe7df);
+  else state.ship.clearTint();
 }
 
 function createPanel(scene: AnyBuild, ship: Phaser.GameObjects.Image, badge: Phaser.GameObjects.Text): UiState {
@@ -106,7 +110,7 @@ function createPanel(scene: AnyBuild, ship: Phaser.GameObjects.Image, badge: Pha
 
   const launchBg = scene.add.rectangle(0, 330, 420, 78, 0x465048, 1).setStrokeStyle(2, 0x829077, 1).setInteractive({ useHandCursor: true });
   const launchText = scene.add.text(0, 330, '尚未完成修复', { fontFamily: 'system-ui, sans-serif', fontSize: '25px', color: '#fff4dc', fontStyle: 'bold' }).setOrigin(0.5);
-  const footer = scene.add.text(0, 400, '起飞后将进入最终太空阶段。', { fontFamily: 'system-ui, sans-serif', fontSize: '18px', color: '#9eaa98' }).setOrigin(0.5);
+  const footer = scene.add.text(0, 400, '起飞后进入最终太空阶段。失败可以返回营地再次尝试。', { fontFamily: 'system-ui, sans-serif', fontSize: '18px', color: '#9eaa98' }).setOrigin(0.5);
 
   panel.add([bg, title, sub, closeBg, closeText, hullCard, hullText, hullCostText, hullBtn, hullBtnText, engineCard, engineText, engineCostText, engineBtn, engineBtnText, launchBg, launchText, footer]);
 
@@ -154,7 +158,9 @@ function createPanel(scene: AnyBuild, ship: Phaser.GameObjects.Image, badge: Pha
     const data = getStarshipState(scene);
     if (data.hull < 3 || data.engine < 3) { scene.showToast?.('星舰尚未完成修复'); return; }
     scene.starshipLaunchUnlocked = true;
-    scene.showToast?.('起飞条件已经满足，太空飞行阶段即将接入');
+    closePanel(state);
+    scene.scene.sleep('build');
+    scene.scene.launch('SpaceScene', { hull: data.hull, engine: data.engine });
   });
 
   return state;
