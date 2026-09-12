@@ -21,6 +21,10 @@ function getPrivate<T>(scene: BuildScene, key: string): T | undefined {
   return (scene as unknown as Record<string, unknown>)[key] as T | undefined;
 }
 
+function setPrivate(scene: BuildScene, key: string, value: unknown): void {
+  (scene as unknown as Record<string, unknown>)[key] = value;
+}
+
 function showToast(scene: BuildScene, text: string): void {
   (scene as unknown as { showToast?: (message: string) => void }).showToast?.(text);
 }
