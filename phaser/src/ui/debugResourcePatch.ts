@@ -72,6 +72,7 @@ function createUi(scene: BuildScene): DebugState {
   panel.add([shade, bg, title, hint, closeBg, closeText, speedRow, speedLabel, speedBg, speedText]);
 
   const valueTexts = new Map<ResourceKey, Phaser.GameObjects.Text>();
+  const state: DebugState = { button, panel, shade, valueTexts, speedText, open: false };
   resources.forEach((item, index) => {
     const col = index < 8 ? 0 : 1;
     const row = index % 8;
@@ -84,23 +85,22 @@ function createUi(scene: BuildScene): DebugState {
     const plus = scene.add.rectangle(baseX + 120, y + 18, 105, 48, 0x4b654b, 1).setStrokeStyle(1, 0x789276, 1).setInteractive({ useHandCursor: true });
     const plusText = scene.add.text(baseX + 120, y + 18, '+1000', { fontFamily: 'system-ui, sans-serif', fontSize: '16px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
     valueTexts.set(item.key, value);
-    valueBg.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); openNumericEditor(scene, state, item.key, item.label); });
-    plus.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); setResource(scene, item.key, getResource(scene, item.key) + 1000); refreshPanel(scene, state); });
+    valueBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); openNumericEditor(scene, state, item.key, item.label); });
+    plus.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); setResource(scene, item.key, getResource(scene, item.key) + 1000); refreshPanel(scene, state); });
     panel.add([rowBg, name, valueBg, value, plus, plusText]);
   });
 
-  const state: DebugState = { button, panel, shade, valueTexts, speedText, open: false };
   const setOpen = (open: boolean) => { state.open = open; panel.setVisible(open); if (open) refreshPanel(scene, state); };
-  buttonBg.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); setOpen(!state.open); });
-  closeBg.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); setOpen(false); });
-  speedBg.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => {
+  buttonBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); setOpen(!state.open); });
+  closeBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); setOpen(false); });
+  speedBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
     event.stopPropagation();
     const speed = cycleSpeed(scene);
     refreshPanel(scene, state);
     (scene as unknown as { showToast?: (message: string) => void }).showToast?.(`测试时间速度：×${speed}`);
   });
-  shade.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => event.stopPropagation());
-  bg.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+  shade.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+  bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
   updatePosition(scene, state);
   return state;
 }
