@@ -9,6 +9,8 @@ const JOB_TEXTURE: Record<string, string> = {
   explorer: 'worker-explorer',
   tanner: 'worker-tanner',
   charcutier: 'worker-charcutier',
+  steelworker: 'worker-steelworker',
+  armourer: 'worker-armourer',
 };
 
 function getWorkers(scene: BuildScene): Phaser.GameObjects.Image[] {
@@ -29,6 +31,8 @@ export function installJobAppearancePatch(): void {
     this.load.svg('worker-explorer', 'assets/workers/explorer.svg', { width: 96, height: 140 });
     this.load.svg('worker-tanner', 'assets/workers/tanner.svg', { width: 96, height: 140 });
     this.load.svg('worker-charcutier', 'assets/workers/charcutier.svg', { width: 96, height: 140 });
+    this.load.svg('worker-steelworker', 'assets/workers/steelworker.svg', { width: 96, height: 140 });
+    this.load.svg('worker-armourer', 'assets/workers/armourer.svg', { width: 96, height: 140 });
     return result;
   };
 
