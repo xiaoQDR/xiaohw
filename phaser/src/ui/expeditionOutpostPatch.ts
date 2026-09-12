@@ -6,10 +6,32 @@ type AnyExpedition = Phaser.Scene & Record<string, any>;
 
 const TILE = 92;
 const VIEW_RADIUS = 4;
+const SAVE_KEY = 'xiaohw-outposts-v1';
 const persistentOutposts = new Set<string>();
 const persistentRoads = new Set<string>(['0,0']);
 const usedByExpedition = new WeakMap<ExpeditionScene, Set<string>>();
+let loaded = false;
 
+function loadState(): void {
+  if (loaded) return;
+  loaded = true;
+  try {
+    const raw = window.localStorage.getItem(SAVE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as { outposts?: unknown; roads?: unknown };
+    if (Array.isArray(parsed.outposts)) for (const key of parsed.outposts) if (typeof key === 'string') persistentOutposts.add(key);
+    if (Array.isArray(parsed.roads)) for (const key of parsed.roads) if (typeof key === 'string') persistentRoads.add(key);
+  } catch {
+    // Ignore malformed/unavailable local storage.
+  }
+}
+function saveState(): void {
+  try {
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ outposts: [...persistentOutposts], roads: [...persistentRoads] }));
+  } catch {
+    // Gameplay remains available without persistence.
+  }
+}
 function parseKey(key: string): { x: number; y: number } {
   const [x, y] = key.split(',').map(Number);
   return { x, y };
@@ -40,13 +62,16 @@ function isOutpostEligible(tile: string): boolean {
   return Boolean(getLandmark(tile)) && !excluded.has(tile);
 }
 function markOutpost(scene: AnyExpedition, key: string): void {
+  loadState();
   if (persistentOutposts.has(key)) return;
   persistentOutposts.add(key);
   const { x, y } = parseKey(key);
   makeRoadTo(x, y);
+  saveState();
   scene.setMessage?.('地点已经清理并建立前哨站。道路已连接回营地，之后经过道路不会触发随机遭遇。');
 }
 function useOutpost(scene: AnyExpedition, key: string): boolean {
+  loadState();
   if (!persistentOutposts.has(key)) return false;
   const expedition = scene as unknown as ExpeditionScene;
   let used = usedByExpedition.get(expedition);
@@ -67,6 +92,7 @@ function useOutpost(scene: AnyExpedition, key: string): boolean {
   return true;
 }
 function maybeRandomEncounter(scene: AnyExpedition): void {
+  loadState();
   if (scene.encounter) return;
   const x = Number(scene.px ?? 0);
   const y = Number(scene.py ?? 0);
@@ -84,6 +110,7 @@ function maybeRandomEncounter(scene: AnyExpedition): void {
   scene.startEncounter?.(`random:${scene.steps}:${key}`, String(tile ?? ''), terrainName, danger);
 }
 function overlayRoads(scene: AnyExpedition): void {
+  loadState();
   const layer = scene.mapLayer as Phaser.GameObjects.Container | undefined;
   if (!layer) return;
   const width = scene.scale.width;
@@ -120,6 +147,7 @@ function overlayRoads(scene: AnyExpedition): void {
 }
 
 export function installExpeditionOutpostPatch(): void {
+  loadState();
   const proto = ExpeditionScene.prototype as unknown as Record<string, any>;
   if (proto.__expeditionOutpostPatched) return;
   proto.__expeditionOutpostPatched = true;
