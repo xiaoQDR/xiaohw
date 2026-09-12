@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import './style.css';
 import { BuildScene } from './scenes/BuildScene';
 import { installWorldExpansionPatch } from './ui/worldExpansionPatch';
+import { installExpeditionCampPatch } from './ui/expeditionCampPatch';
 import { installBuildMenuPatch } from './ui/buildMenuPatch';
 import { installResponsiveChromePatch } from './ui/responsiveChromePatch';
 import { installJobAppearancePatch } from './ui/jobAppearancePatch';
@@ -21,6 +22,7 @@ import { installWorkerIdentityPatch } from './ui/workerIdentityPatch';
 import { installWorkerMovementSpeedPatch } from './ui/workerMovementSpeedPatch';
 
 installWorldExpansionPatch();
+installExpeditionCampPatch();
 installBuildMenuPatch();
 installResponsiveChromePatch();
 installJobAppearancePatch();
