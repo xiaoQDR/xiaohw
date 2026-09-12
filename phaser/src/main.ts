@@ -30,6 +30,7 @@ import { installExpeditionMineProgressPatch } from './ui/expeditionMineProgressP
 import { installMineWorkerPatch } from './ui/mineWorkerPatch';
 import { installExpeditionOutpostPatch } from './ui/expeditionOutpostPatch';
 import { installExpeditionResponsivePatch } from './ui/expeditionResponsivePatch';
+import { installExpeditionMovementFixPatch } from './ui/expeditionMovementFixPatch';
 import { installSaveGamePatch } from './ui/saveGamePatch';
 
 installWorldExpansionPatch();
@@ -58,6 +59,7 @@ installStarshipProgressionPatch();
 installExpeditionMineProgressPatch();
 installExpeditionOutpostPatch();
 installExpeditionResponsivePatch();
+installExpeditionMovementFixPatch();
 installMineWorkerPatch();
 installSaveGamePatch();
 
