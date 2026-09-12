@@ -74,7 +74,6 @@ function crafted(scene: BuildScene): Record<string, number> {
 function inventoryCount(scene: BuildScene, id: string): number {
   const fromCrafts = Number(crafted(scene)[id] ?? 0);
   if (fromCrafts > 0) return fromCrafts;
-  // Compatibility with older saves / systems that stored an item directly on the scene.
   return Math.max(0, Number(getPrivate<number>(scene, id) ?? 0));
 }
 function owns(scene: BuildScene, id: string): boolean { return inventoryCount(scene, id) > 0; }
@@ -250,6 +249,9 @@ function createPanel(scene: BuildScene): ExpeditionState {
   const gearBg = scene.add.rectangle(0, -180, 760, 410, 0x2b352c, 1).setStrokeStyle(2, 0x536453, 1);
   const gearTitle = scene.add.text(-335, -350, '装备库存', { fontFamily: 'system-ui, sans-serif', fontSize: '25px', color: '#fff4d9', fontStyle: 'bold' });
   const inventoryText = scene.add.text(-335, -313, '', { fontFamily: 'system-ui, sans-serif', fontSize: '16px', color: '#9eaf98' });
+
+  panel.add([shade, bg, title, sub, closeBg, closeText, playerBg, playerText, gearBg, gearTitle, inventoryText]);
+
   const weapon = createSlot(scene, panel, -255, '武器');
   const armour = createSlot(scene, panel, -185, '护甲');
   const bag = createSlot(scene, panel, -115, '背包');
@@ -257,6 +259,8 @@ function createPanel(scene: BuildScene): ExpeditionState {
 
   const supplyBg = scene.add.rectangle(0, 180, 760, 250, 0x2b352c, 1).setStrokeStyle(2, 0x536453, 1);
   const supplyTitle = scene.add.text(-335, 78, '远征消耗品', { fontFamily: 'system-ui, sans-serif', fontSize: '25px', color: '#fff4d9', fontStyle: 'bold' });
+  panel.add([supplyBg, supplyTitle]);
+
   const food = createSupplyRow(scene, panel, 135, '熏肉');
   const medicine = createSupplyRow(scene, panel, 197, '药剂');
   const bullets = createSupplyRow(scene, panel, 259, '子弹');
@@ -264,11 +268,9 @@ function createPanel(scene: BuildScene): ExpeditionState {
   const summaryBg = scene.add.rectangle(0, 425, 760, 150, 0x273027, 1).setStrokeStyle(1, 0x4f604f, 1);
   const summaryText = scene.add.text(-335, 380, '', { fontFamily: 'system-ui, sans-serif', fontSize: '20px', color: '#dce5d0', lineSpacing: 9 });
   const warningText = scene.add.text(-335, 477, '', { fontFamily: 'system-ui, sans-serif', fontSize: '18px', color: '#d6a28f', wordWrap: { width: 670 } });
-
   const departBg = scene.add.rectangle(0, 570, 360, 72, 0x454c45, 1).setStrokeStyle(2, 0x7a8c70, 1).setInteractive({ useHandCursor: true });
   const departText = scene.add.text(0, 570, '出发', { fontFamily: 'system-ui, sans-serif', fontSize: '27px', color: '#9ca59a', fontStyle: 'bold' }).setOrigin(0.5);
-
-  panel.add([shade, bg, title, sub, closeBg, closeText, playerBg, playerText, gearBg, gearTitle, inventoryText, supplyBg, supplyTitle, summaryBg, summaryText, warningText, departBg, departText]);
+  panel.add([summaryBg, summaryText, warningText, departBg, departText]);
 
   const state: ExpeditionState = {
     panel, shade, open: false, active: false,
