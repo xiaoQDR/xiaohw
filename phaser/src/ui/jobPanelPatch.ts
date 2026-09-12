@@ -28,6 +28,9 @@ const JOBS: JobDef[] = [
 const JOB_IDS = JOBS.map((job) => job.id);
 const states = new WeakMap<BuildScene, JobState>();
 
+function setPrivate(scene: BuildScene, key: string, value: unknown): void {
+  (scene as unknown as Record<string, unknown>)[key] = value;
+}
 function hasBuilding(scene: BuildScene, id?: BuildingId): boolean {
   if (!id) return true;
   const placed = ((scene as unknown as { placed?: Array<{ id: string }> }).placed ?? []);
@@ -35,8 +38,8 @@ function hasBuilding(scene: BuildScene, id?: BuildingId): boolean {
 }
 function positionUi(scene: BuildScene, state: JobState): void {
   const view = scene.cameras.main.worldView;
-  state.button.setPosition(view.centerX, view.bottom - MENU_H - 54).setDepth(5200);
-  state.panel.setPosition(view.centerX, view.bottom - MENU_H - 82).setDepth(5300);
+  state.button.setVisible(false);
+  state.panel.setPosition(view.centerX, view.centerY).setDepth(5300);
 }
 function refresh(scene: BuildScene, state: JobState): void {
   for (const job of JOBS) {
@@ -101,12 +104,12 @@ function adjust(scene: BuildScene, state: JobState, job: JobDef, delta: number):
 function createUi(scene: BuildScene): JobState {
   const buttonBg = scene.add.rectangle(0, 0, 242, 64, 0x344737, 0.98).setStrokeStyle(2, 0x91a47d, 1).setInteractive({ useHandCursor: true });
   const buttonText = scene.add.text(0, 0, '人口分工', { fontFamily: 'system-ui, sans-serif', fontSize: '25px', color: '#fff2d3', fontStyle: 'bold' }).setOrigin(0.5);
-  const button = scene.add.container(0, 0, [buttonBg, buttonText]);
-  const panelBg = scene.add.rectangle(0, -360, 860, 760, 0x1f2921, 0.99).setStrokeStyle(3, 0x768a66, 1).setInteractive();
-  const header = scene.add.text(-380, -700, '人口分工', { fontFamily: 'system-ui, sans-serif', fontSize: '34px', color: '#fff3dc', fontStyle: 'bold' });
-  const sub = scene.add.text(-380, -654, '人口默认是采集者，可以调到其他已解锁岗位。', { fontFamily: 'system-ui, sans-serif', fontSize: '19px', color: '#aebda3' });
-  const closeBg = scene.add.circle(370, -680, 26, 0x3e4e40, 1).setInteractive({ useHandCursor: true });
-  const closeText = scene.add.text(370, -681, '×', { fontFamily: 'system-ui, sans-serif', fontSize: '30px', color: '#ffffff' }).setOrigin(0.5);
+  const button = scene.add.container(0, 0, [buttonBg, buttonText]).setVisible(false);
+  const panelBg = scene.add.rectangle(0, 0, 860, 760, 0x1f2921, 0.99).setStrokeStyle(3, 0x768a66, 1).setInteractive();
+  const header = scene.add.text(-380, -340, '人口管理', { fontFamily: 'system-ui, sans-serif', fontSize: '34px', color: '#fff3dc', fontStyle: 'bold' });
+  const sub = scene.add.text(-380, -294, '人口默认是采集者，可以调到其他已解锁岗位。', { fontFamily: 'system-ui, sans-serif', fontSize: '19px', color: '#aebda3' });
+  const closeBg = scene.add.circle(370, -320, 26, 0x3e4e40, 1).setInteractive({ useHandCursor: true });
+  const closeText = scene.add.text(370, -321, '×', { fontFamily: 'system-ui, sans-serif', fontSize: '30px', color: '#ffffff' }).setOrigin(0.5);
   const countTexts = new Map<JobId, Phaser.GameObjects.Text>();
   const stateTexts = new Map<JobId, Phaser.GameObjects.Text>();
   const children: Phaser.GameObjects.GameObject[] = [panelBg, header, sub, closeBg, closeText];
@@ -118,7 +121,7 @@ function createUi(scene: BuildScene): JobState {
   };
   state.counts.gatherer = state.lastPopulation;
   JOBS.forEach((job, index) => {
-    const y = -585 + index * 82;
+    const y = -225 + index * 82;
     const row = scene.add.rectangle(0, y, 776, 68, 0x2d392f, 1).setStrokeStyle(1, 0x516552, 1);
     const name = scene.add.text(-355, y - 19, job.name, { fontFamily: 'system-ui, sans-serif', fontSize: '23px', color: '#fff5de', fontStyle: 'bold' });
     const desc = scene.add.text(-355, y + 10, job.description, { fontFamily: 'system-ui, sans-serif', fontSize: '15px', color: '#9fb091' });
@@ -134,6 +137,8 @@ function createUi(scene: BuildScene): JobState {
   });
   state.panel.add(children).setVisible(false);
   const toggle = (open?: boolean) => { state.open = open ?? !state.open; state.panel.setVisible(state.open); refresh(scene, state); };
+  setPrivate(scene, 'openPopulationPanel', () => toggle(true));
+  setPrivate(scene, 'closePopulationPanel', () => toggle(false));
   buttonBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); toggle(); });
   closeBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); toggle(false); });
   panelBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation());
