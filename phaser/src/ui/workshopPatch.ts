@@ -22,6 +22,7 @@ function setPrivate(scene: BuildScene, key: string, value: unknown): void {
 function getResource(scene: BuildScene, key: Resource): number { return Number(getPrivate<number>(scene, key) ?? 0); }
 function setResource(scene: BuildScene, key: Resource, value: number): void { setPrivate(scene, key, Math.max(0, value)); }
 function refreshResources(scene: BuildScene): void { (scene as unknown as { refreshResources?: () => void }).refreshResources?.call(scene); }
+function refreshExpeditionInventory(scene: BuildScene): void { getPrivate<() => void>(scene, 'refreshExpeditionInventory')?.(); }
 function showToast(scene: BuildScene, message: string): void { (scene as unknown as { showToast?: (message: string) => void }).showToast?.call(scene, message); }
 function getCrafted(scene: BuildScene): Record<string, number> {
   let crafted = getPrivate<Record<string, number>>(scene, 'craftedItems');
@@ -49,6 +50,7 @@ function doCraft(scene: BuildScene, craft: (typeof CRAFTS)[number]): void {
   crafted[craft.id] = (crafted[craft.id] ?? 0) + amount;
   if (craft.id === 'torch') setResource(scene, 'torch', getResource(scene, 'torch') + amount);
   refreshResources(scene);
+  refreshExpeditionInventory(scene);
   showToast(scene, `制作完成：${craft.name}`);
 }
 function refreshPanel(scene: BuildScene, state: CraftState): void {
