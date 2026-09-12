@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { ExpeditionScene } from '../scenes/ExpeditionScene';
 import { WORLD_TILE } from '../game/worldMap';
 
-type AnyScene = ExpeditionScene & Record<string, any>;
+type AnyScene = Phaser.Scene & Record<string, any>;
 type Loot = Record<string, number>;
 
 type EnemyProfile = { name: string; hpMul: number; damageMul: number; trait: string };
