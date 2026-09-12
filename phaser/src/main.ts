@@ -24,6 +24,7 @@ import { installWorkerIdentityPatch } from './ui/workerIdentityPatch';
 import { installWorkerMovementSpeedPatch } from './ui/workerMovementSpeedPatch';
 import { installBottomNavPatch } from './ui/bottomNavPatch';
 import { installExpeditionCombatDepthPatch } from './ui/expeditionCombatDepthPatch';
+import { installStarshipProgressionPatch } from './ui/starshipProgressionPatch';
 
 installWorldExpansionPatch();
 installExpeditionCampPatch();
@@ -47,6 +48,7 @@ installWorkerIdentityPatch();
 installWorkerMovementSpeedPatch();
 installBottomNavPatch();
 installExpeditionCombatDepthPatch();
+installStarshipProgressionPatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
