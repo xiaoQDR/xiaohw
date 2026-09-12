@@ -30,6 +30,7 @@ import { installExpeditionMineProgressPatch } from './ui/expeditionMineProgressP
 import { installMineWorkerPatch } from './ui/mineWorkerPatch';
 import { installExpeditionOutpostPatch } from './ui/expeditionOutpostPatch';
 import { installExpeditionResponsivePatch } from './ui/expeditionResponsivePatch';
+import { installSaveGamePatch } from './ui/saveGamePatch';
 
 installWorldExpansionPatch();
 installExpeditionCampPatch();
@@ -58,6 +59,7 @@ installExpeditionMineProgressPatch();
 installExpeditionOutpostPatch();
 installExpeditionResponsivePatch();
 installMineWorkerPatch();
+installSaveGamePatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
