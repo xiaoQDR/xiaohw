@@ -65,10 +65,10 @@ function createUi(scene: BuildScene): InventoryState {
 
   const state: InventoryState = { button, panel, shade, listText, open: false };
   const setOpen = (open: boolean) => { state.open = open; panel.setVisible(open); if (open) refresh(scene, state); };
-  buttonBg.on('pointerdown', (_p, _x, _y, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); setOpen(!state.open); });
-  closeBg.on('pointerdown', (_p, _x, _y, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); setOpen(false); });
-  shade.on('pointerdown', (_p, _x, _y, e: Phaser.Types.Input.EventData) => e.stopPropagation());
-  bg.on('pointerdown', (_p, _x, _y, e: Phaser.Types.Input.EventData) => e.stopPropagation());
+  buttonBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); setOpen(!state.open); });
+  closeBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); setOpen(false); });
+  shade.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation());
+  bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation());
   refresh(scene, state);
   layout(scene, state);
   return state;
