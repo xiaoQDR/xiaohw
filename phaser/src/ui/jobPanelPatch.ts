@@ -18,12 +18,14 @@ interface JobState {
   button: Phaser.GameObjects.Container;
   panel: Phaser.GameObjects.Container;
   open: boolean;
+  restored: boolean;
   lastPopulation: number;
   counts: Record<JobId, number>;
   countTexts: Map<JobId, Phaser.GameObjects.Text>;
   stateTexts: Map<JobId, Phaser.GameObjects.Text>;
 }
 
+const JOB_SAVE_KEY = 'xiaohw-job-counts-v1';
 const JOBS: JobDef[] = [
   { id: 'gatherer', name: '采集者', description: '自动采集木材并送回营地' },
   { id: 'hunter', name: '猎人', description: '外出狩猎，稳定获得毛皮与肉', requires: 'lodge', requiresName: '猎人小屋' },
@@ -39,6 +41,9 @@ const JOBS: JobDef[] = [
 const JOB_IDS = JOBS.map((job) => job.id);
 const states = new WeakMap<BuildScene, JobState>();
 
+function emptyCounts(): Record<JobId, number> {
+  return { gatherer: 0, hunter: 0, explorer: 0, ironMiner: 0, coalMiner: 0, sulphurMiner: 0, tanner: 0, charcutier: 0, steelworker: 0, armourer: 0 };
+}
 function setPrivate(scene: BuildScene, key: string, value: unknown): void {
   (scene as unknown as Record<string, unknown>)[key] = value;
 }
@@ -59,6 +64,35 @@ function lockedReason(job: JobDef): string {
   if (job.requiresMine) return `需占领${job.requiresMineName}`;
   if (job.requires) return `需 ${job.requiresName}`;
   return '';
+}
+function saveJobCounts(state: JobState): void {
+  try { window.localStorage.setItem(JOB_SAVE_KEY, JSON.stringify(state.counts)); } catch { /* storage unavailable */ }
+}
+function restoreJobCounts(scene: BuildScene, state: JobState, population: number): void {
+  const next = emptyCounts();
+  let remaining = Math.max(0, Math.floor(population));
+  let saved: Partial<Record<JobId, number>> | null = null;
+  try {
+    const raw = window.localStorage.getItem(JOB_SAVE_KEY);
+    if (raw) saved = JSON.parse(raw) as Partial<Record<JobId, number>>;
+  } catch {
+    saved = null;
+  }
+  if (saved) {
+    for (const job of JOBS) {
+      if (job.id === 'gatherer' || !isUnlocked(scene, job) || remaining <= 0) continue;
+      const desired = Math.max(0, Math.floor(Number(saved[job.id] ?? 0)));
+      const amount = Math.min(desired, remaining);
+      next[job.id] = amount;
+      remaining -= amount;
+    }
+  }
+  next.gatherer = remaining;
+  state.counts = next;
+  state.lastPopulation = population;
+  state.restored = true;
+  applyWorkerJobs(scene, state);
+  refresh(scene, state);
 }
 function positionUi(scene: BuildScene, state: JobState): void {
   const view = scene.cameras.main.worldView;
@@ -124,7 +158,9 @@ function adjust(scene: BuildScene, state: JobState, job: JobDef, delta: number):
     if (job.id === 'gatherer' || state.counts[job.id] <= 0) return;
     state.counts[job.id] -= 1; state.counts.gatherer += 1;
   }
-  applyWorkerJobs(scene, state); refresh(scene, state);
+  applyWorkerJobs(scene, state);
+  refresh(scene, state);
+  saveJobCounts(state);
 }
 function createUi(scene: BuildScene): JobState {
   const buttonBg = scene.add.rectangle(0, 0, 242, 64, 0x344737, 0.98).setStrokeStyle(2, 0x91a47d, 1).setInteractive({ useHandCursor: true });
@@ -139,9 +175,9 @@ function createUi(scene: BuildScene): JobState {
   const stateTexts = new Map<JobId, Phaser.GameObjects.Text>();
   const children: Phaser.GameObjects.GameObject[] = [panelBg, header, sub, closeBg, closeText];
   const state: JobState = {
-    button, panel: scene.add.container(0, 0), open: false,
+    button, panel: scene.add.container(0, 0), open: false, restored: false,
     lastPopulation: Number((scene as unknown as { population?: number }).population ?? 0),
-    counts: { gatherer: 0, hunter: 0, explorer: 0, ironMiner: 0, coalMiner: 0, sulphurMiner: 0, tanner: 0, charcutier: 0, steelworker: 0, armourer: 0 },
+    counts: emptyCounts(),
     countTexts, stateTexts,
   };
   state.counts.gatherer = state.lastPopulation;
@@ -156,8 +192,10 @@ function createUi(scene: BuildScene): JobState {
     const count = scene.add.text(280, y, '0', { fontFamily: 'system-ui, sans-serif', fontSize: '23px', color: '#fff0bd', fontStyle: 'bold' }).setOrigin(0.5);
     const plus = scene.add.rectangle(350, y, 52, 42, 0x536a50, 1).setStrokeStyle(1, 0x809476, 1).setInteractive({ useHandCursor: true });
     const plusText = scene.add.text(350, y - 1, '+', { fontSize: '27px', color: '#ffffff' }).setOrigin(0.5);
-    minus.on('pointerdown', () => adjust(scene, state, job, -1)); plus.on('pointerdown', () => adjust(scene, state, job, 1));
-    countTexts.set(job.id, count); stateTexts.set(job.id, stateText);
+    minus.on('pointerdown', () => adjust(scene, state, job, -1));
+    plus.on('pointerdown', () => adjust(scene, state, job, 1));
+    countTexts.set(job.id, count);
+    stateTexts.set(job.id, stateText);
     children.push(row, name, desc, stateText, minus, minusText, count, plus, plusText);
   });
   state.panel.add(children).setVisible(false);
@@ -167,7 +205,9 @@ function createUi(scene: BuildScene): JobState {
   buttonBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); toggle(); });
   closeBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); toggle(false); });
   panelBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation());
-  positionUi(scene, state); refresh(scene, state); return state;
+  positionUi(scene, state);
+  refresh(scene, state);
+  return state;
 }
 
 export function installJobPanelPatch(): void {
@@ -179,20 +219,40 @@ export function installJobPanelPatch(): void {
   const originalStartWorkerLoop = proto.startWorkerLoop;
   const originalReturnWorkerToCamp = proto.returnWorkerToCamp;
   proto.create = function patchedCreate(this: BuildScene, ...args: unknown[]) {
-    const result = originalCreate.apply(this, args); const state = createUi(this); states.set(this, state); applyWorkerJobs(this, state); return result;
+    const result = originalCreate.apply(this, args);
+    const state = createUi(this);
+    states.set(this, state);
+    applyWorkerJobs(this, state);
+    return result;
   };
   proto.update = function patchedUpdate(this: BuildScene, ...args: unknown[]) {
-    const result = originalUpdate.apply(this, args); const state = states.get(this); if (!state) return result;
+    const result = originalUpdate.apply(this, args);
+    const state = states.get(this);
+    if (!state) return result;
     const population = Number((this as unknown as { population?: number }).population ?? 0);
-    if (population > state.lastPopulation) state.counts.gatherer += population - state.lastPopulation;
-    if (population < state.lastPopulation) state.counts.gatherer = Math.max(0, state.counts.gatherer - (state.lastPopulation - population));
-    if (population !== state.lastPopulation) { state.lastPopulation = population; applyWorkerJobs(this, state); refresh(this, state); }
-    positionUi(this, state); if (state.open) refresh(this, state); return result;
+    if (!state.restored) {
+      restoreJobCounts(this, state, population);
+    } else {
+      if (population > state.lastPopulation) state.counts.gatherer += population - state.lastPopulation;
+      if (population < state.lastPopulation) state.counts.gatherer = Math.max(0, state.counts.gatherer - (state.lastPopulation - population));
+      if (population !== state.lastPopulation) {
+        state.lastPopulation = population;
+        applyWorkerJobs(this, state);
+        refresh(this, state);
+        saveJobCounts(state);
+      }
+    }
+    positionUi(this, state);
+    if (state.open) refresh(this, state);
+    return result;
   };
   proto.startWorkerLoop = function patchedStartWorkerLoop(this: BuildScene, worker: Phaser.GameObjects.Image, delay = 0) {
-    if (!worker.getData('job')) worker.setData('job', 'gatherer'); if (worker.getData('job') !== 'gatherer') return; return originalStartWorkerLoop.call(this, worker, delay);
+    if (!worker.getData('job')) worker.setData('job', 'gatherer');
+    if (worker.getData('job') !== 'gatherer') return;
+    return originalStartWorkerLoop.call(this, worker, delay);
   };
   proto.returnWorkerToCamp = function patchedReturnWorker(this: BuildScene, worker: Phaser.GameObjects.Image) {
-    if (worker.getData('job') !== 'gatherer') return; return originalReturnWorkerToCamp.call(this, worker);
+    if (worker.getData('job') !== 'gatherer') return;
+    return originalReturnWorkerToCamp.call(this, worker);
   };
 }
