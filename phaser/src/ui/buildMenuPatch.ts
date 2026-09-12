@@ -45,16 +45,8 @@ const BUILDINGS: BuildingDef[] = [
 ];
 
 const MAX_COUNTS: Record<BuildingId, number> = {
-  trap: 10,
-  cart: 1,
-  hut: 20,
-  lodge: 1,
-  tradingPost: 1,
-  tannery: 1,
-  smokehouse: 1,
-  workshop: 1,
-  steelworks: 1,
-  armoury: 1,
+  trap: 10, cart: 1, hut: 20, lodge: 1, tradingPost: 1, tannery: 1,
+  smokehouse: 1, workshop: 1, steelworks: 1, armoury: 1,
 };
 
 const stateMap = new WeakMap<BuildScene, MenuState>();
@@ -101,16 +93,18 @@ function layoutForView(scene: BuildScene, state: MenuState): void {
   state.maxScroll = Math.max(0, contentWidth - state.viewportWidth);
   applyScroll(state, state.scrollX);
 }
-function rebuildCards(scene: BuildScene, state: MenuState): void {
+function rebuildCards(scene: BuildScene, state: MenuState, force = false): void {
   const visible = BUILDINGS.filter((def) => isUnlocked(scene, def.id) && hasCapacity(scene, def.id));
   const signature = visible.map((d) => d.id).join('|');
-  if (signature === state.visibleIds) return;
+  if (!force && signature === state.visibleIds) return;
   state.visibleIds = signature;
   state.content.removeAll(true);
   visible.forEach((def, index) => {
     const x = index * (CARD_W + GAP);
     const card = scene.add.rectangle(x + CARD_W / 2, CARD_H / 2, CARD_W, CARD_H, 0x354237, 1)
-      .setStrokeStyle(2, 0x718669, 1).setInteractive({ draggable: true, useHandCursor: true });
+      .setStrokeStyle(2, 0x718669, 1)
+      .setInteractive({ useHandCursor: true });
+    scene.input.setDraggable(card, true);
     card.setData('buildingDef', def);
     const icon = scene.add.image(x + CARD_W / 2, 82, def.texture).setDisplaySize(112, 112);
     const name = scene.add.text(x + 18, 144, def.name, {
@@ -148,6 +142,7 @@ function createMenu(scene: BuildScene): MenuState {
   menu.add([bg, topLine, title, hint, viewport]);
   viewport.setMask(maskShape.createGeometryMask());
   setPrivate(scene, 'menu', menu);
+  setPrivate(scene, 'refreshBuildMenuNow', () => rebuildCards(scene, state, true));
 
   scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
     const wp = scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -159,7 +154,7 @@ function createMenu(scene: BuildScene): MenuState {
     if (!pointer.isDown || state.pointerId !== pointer.id) return;
     const dx = pointer.x - state.startX;
     const dy = pointer.y - state.startY;
-    if (!state.swiping && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+    if (!state.swiping && Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.35) {
       state.swiping = true;
       cancelBuildDrag(scene);
     }
@@ -169,7 +164,7 @@ function createMenu(scene: BuildScene): MenuState {
   scene.input.on('pointerup', clear);
   scene.input.on('pointerupoutside', clear);
 
-  rebuildCards(scene, state); layoutForView(scene, state);
+  rebuildCards(scene, state, true); layoutForView(scene, state);
   return state;
 }
 
@@ -187,7 +182,8 @@ export function installBuildMenuPatch(): void {
   const originalPlaceBuilding = proto.placeBuilding;
   proto.placeBuilding = function patchedPlaceBuilding(this: BuildScene, ...args: any[]) {
     const result = originalPlaceBuilding.apply(this, args);
-    const state = stateMap.get(this); if (state) rebuildCards(this, state);
+    const state = stateMap.get(this);
+    if (state) rebuildCards(this, state, true);
     return result;
   };
 }
