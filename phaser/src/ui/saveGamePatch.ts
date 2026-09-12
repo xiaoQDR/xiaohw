@@ -15,6 +15,7 @@ type SaveData = {
   starshipRecovered: boolean;
   oldStarshipState: { hull: number; engine: number };
   starshipCompleted: boolean;
+  fabricatorUnlocked: boolean;
   savedAt: number;
 };
 
@@ -76,6 +77,7 @@ function makeSave(scene: AnyBuild): SaveData {
       engine: Phaser.Math.Clamp(Math.floor(safeNumber(starship.engine)), 0, 3),
     },
     starshipCompleted: Boolean(scene.starshipCompleted),
+    fabricatorUnlocked: Boolean(scene.fabricatorUnlocked),
     savedAt: Date.now(),
   };
 }
@@ -112,6 +114,7 @@ function restoreSave(scene: AnyBuild): void {
     engine: Phaser.Math.Clamp(Math.floor(safeNumber(save.oldStarshipState?.engine)), 0, 3),
   };
   scene.starshipCompleted = Boolean(save.starshipCompleted);
+  scene.fabricatorUnlocked = Boolean(save.fabricatorUnlocked);
   scene.starshipLaunchUnlocked = scene.oldStarshipState.hull >= 3 && scene.oldStarshipState.engine >= 3;
 
   const targetPopulation = Math.min(Math.floor(safeNumber(save.population)), Math.floor(safeNumber(scene.populationCap)));
