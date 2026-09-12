@@ -110,6 +110,10 @@ export function generateWorldMap(): string[][] {
   return map;
 }
 
+export function setLastWorldMap(map: string[][]): void {
+  lastGeneratedWorldMap = map;
+}
+
 export function getLastWorldTileCoordinates(tile: string): WorldCoordinate[] {
   if (!lastGeneratedWorldMap) return [];
   const result: WorldCoordinate[] = [];
