@@ -168,17 +168,6 @@ function processJobProduction(scene: BuildScene): void {
     addResource(scene, 'meat', -1);
     addResource(scene, 'bait', 1);
   }
-  for (let i = 0; i < (counts.tanner ?? 0); i += 1) {
-    if (getResource(scene, 'fur') < 5) break;
-    addResource(scene, 'fur', -5);
-    addResource(scene, 'leather', 1);
-  }
-  for (let i = 0; i < (counts.charcutier ?? 0); i += 1) {
-    if (getResource(scene, 'meat') < 5 || getResource(scene, 'wood') < 5) break;
-    addResource(scene, 'meat', -5);
-    addResource(scene, 'wood', -5);
-    addResource(scene, 'curedMeat', 1);
-  }
   refresh(scene);
 }
 
