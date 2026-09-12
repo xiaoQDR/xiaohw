@@ -44,10 +44,26 @@ const BUILDINGS: BuildingDef[] = [
   { id: 'armoury', name: '军械库', texture: 'building-armoury', footprint: [2, 2], costWood: 3000, displaySize: [300, 265] },
 ];
 
+const MAX_COUNTS: Record<BuildingId, number> = {
+  trap: 10,
+  cart: 1,
+  hut: 20,
+  lodge: 1,
+  tradingPost: 1,
+  tannery: 1,
+  smokehouse: 1,
+  workshop: 1,
+  steelworks: 1,
+  armoury: 1,
+};
+
 const stateMap = new WeakMap<BuildScene, MenuState>();
 function getPrivate<T>(scene: BuildScene, key: string): T | undefined { return (scene as unknown as Record<string, unknown>)[key] as T | undefined; }
 function setPrivate(scene: BuildScene, key: string, value: unknown): void { (scene as unknown as Record<string, unknown>)[key] = value; }
-function placedIds(scene: BuildScene): Set<string> { return new Set((getPrivate<Array<{ id: string }>>(scene, 'placed') ?? []).map((b) => b.id)); }
+function placedList(scene: BuildScene): Array<{ id: string }> { return getPrivate<Array<{ id: string }>>(scene, 'placed') ?? []; }
+function placedIds(scene: BuildScene): Set<string> { return new Set(placedList(scene).map((b) => b.id)); }
+function buildingCount(scene: BuildScene, id: BuildingId): number { return placedList(scene).filter((b) => b.id === id).length; }
+function hasCapacity(scene: BuildScene, id: BuildingId): boolean { return buildingCount(scene, id) < MAX_COUNTS[id]; }
 function isUnlocked(scene: BuildScene, id: BuildingId): boolean {
   const built = placedIds(scene);
   if (id === 'trap' || id === 'cart' || id === 'hut') return true;
@@ -86,7 +102,7 @@ function layoutForView(scene: BuildScene, state: MenuState): void {
   applyScroll(state, state.scrollX);
 }
 function rebuildCards(scene: BuildScene, state: MenuState): void {
-  const visible = BUILDINGS.filter((def) => isUnlocked(scene, def.id));
+  const visible = BUILDINGS.filter((def) => isUnlocked(scene, def.id) && hasCapacity(scene, def.id));
   const signature = visible.map((d) => d.id).join('|');
   if (signature === state.visibleIds) return;
   state.visibleIds = signature;
@@ -147,9 +163,7 @@ function createMenu(scene: BuildScene): MenuState {
       state.swiping = true;
       cancelBuildDrag(scene);
     }
-    if (state.swiping) {
-      applyScroll(state, state.contentStartX + dx / Math.max(0.001, scene.cameras.main.zoom));
-    }
+    if (state.swiping) applyScroll(state, state.contentStartX + dx / Math.max(0.001, scene.cameras.main.zoom));
   });
   const clear = (pointer: Phaser.Input.Pointer) => { if (state.pointerId === pointer.id) { state.pointerId = null; state.swiping = false; } };
   scene.input.on('pointerup', clear);
