@@ -62,7 +62,7 @@ function createUi(scene: BuildScene): DebugState {
   const shade = scene.add.rectangle(0, 0, 1300, 2100, 0x111511, 0.72).setInteractive();
   const bg = scene.add.rectangle(0, 0, 900, 1420, 0x202720, 0.995).setStrokeStyle(3, 0x7c8d72, 1).setInteractive();
   const title = scene.add.text(-370, -655, 'DEBUG · 资源设置', { fontFamily: 'system-ui, sans-serif', fontSize: '34px', color: '#fff2d9', fontStyle: 'bold' });
-  const hint = scene.add.text(-370, -607, '点击中间数值可直接输入；+100 用于快速测试。', { fontFamily: 'system-ui, sans-serif', fontSize: '18px', color: '#aebca5' });
+  const hint = scene.add.text(-370, -607, '点击中间数值可直接输入；+1000 用于快速测试。', { fontFamily: 'system-ui, sans-serif', fontSize: '18px', color: '#aebca5' });
   const closeBg = scene.add.circle(370, -645, 30, 0x4a594b, 1).setInteractive({ useHandCursor: true });
   const closeText = scene.add.text(370, -646, '×', { fontSize: '34px', color: '#ffffff' }).setOrigin(0.5);
   panel.add([shade, bg, title, hint, closeBg, closeText]);
@@ -76,14 +76,14 @@ function createUi(scene: BuildScene): DebugState {
     const name = scene.add.text(baseX - 165, y - 34, item.label, { fontFamily: 'system-ui, sans-serif', fontSize: '21px', color: '#e5ecd9', fontStyle: 'bold' });
     const valueBg = scene.add.rectangle(baseX - 35, y + 20, 180, 52, 0x3a463b, 1).setStrokeStyle(1, 0x768575, 1).setInteractive({ useHandCursor: true });
     const value = scene.add.text(baseX - 35, y + 20, '0', { fontFamily: 'system-ui, sans-serif', fontSize: '23px', color: '#fff0b4', fontStyle: 'bold' }).setOrigin(0.5);
-    const plus = scene.add.rectangle(baseX + 120, y + 20, 95, 52, 0x4b654b, 1).setStrokeStyle(1, 0x789276, 1).setInteractive({ useHandCursor: true });
-    const plusText = scene.add.text(baseX + 120, y + 20, '+100', { fontFamily: 'system-ui, sans-serif', fontSize: '18px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+    const plus = scene.add.rectangle(baseX + 120, y + 20, 105, 52, 0x4b654b, 1).setStrokeStyle(1, 0x789276, 1).setInteractive({ useHandCursor: true });
+    const plusText = scene.add.text(baseX + 120, y + 20, '+1000', { fontFamily: 'system-ui, sans-serif', fontSize: '17px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
     state.valueTexts.set(item.key, value);
     valueBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation(); openNumericEditor(scene, state, item.key, item.label);
     });
     plus.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
-      event.stopPropagation(); setResource(scene, item.key, getResource(scene, item.key) + 100); refreshPanel(scene, state);
+      event.stopPropagation(); setResource(scene, item.key, getResource(scene, item.key) + 1000); refreshPanel(scene, state);
     });
     panel.add([rowBg, name, valueBg, value, plus, plusText]);
   });
