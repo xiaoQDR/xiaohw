@@ -15,7 +15,6 @@ type ExpeditionPayload = {
 
 type Supplies = { curedMeat: number; medicine: number; bullets: number };
 type Loot = Record<string, number>;
-type ExpeditionResult = { remaining: Supplies; loot: Loot; claimedMines: string[]; died?: boolean };
 type Encounter = { key: string; tile: string; name: string; danger: number; hp: number; maxHp: number; enemyDamage: number };
 
 const VIEW_RADIUS = 4;
@@ -246,7 +245,8 @@ export class ExpeditionScene extends Phaser.Scene {
     if (!this.encounter) return;
     const e = this.encounter, loot = this.generateLoot(e.tile, e.danger);
     persistentCleared.add(e.key);
-    if ([WORLD_TILE.ironMine, WORLD_TILE.coalMine, WORLD_TILE.sulphurMine].includes(e.tile as never)) persistentClaimedMines.add(e.key);
+    const mineTiles: string[] = [WORLD_TILE.ironMine, WORLD_TILE.coalMine, WORLD_TILE.sulphurMine];
+    if (mineTiles.includes(e.tile)) persistentClaimedMines.add(e.key);
     for (const [key, amount] of Object.entries(loot)) this.carriedLoot[key] = (this.carriedLoot[key] ?? 0) + amount;
     const lootText = Object.entries(loot).map(([key, amount]) => `${this.lootName(key)} +${amount}`).join(' · ');
     this.setMessage(`已清理 ${e.name}。${lootText || '没有找到有价值的东西。'}${persistentClaimedMines.has(e.key) ? '\n矿场已占领。' : ''}`);
@@ -286,9 +286,20 @@ export class ExpeditionScene extends Phaser.Scene {
 
   private returnToCamp(died = false): void {
     if (this.encounter && !died) { this.setMessage('战斗中不能直接返回营地，请先撤离。'); return; }
-    const build = this.scene.get('BuildScene') as Phaser.Scene & Record<string, unknown>;
-    const finish = build['finishExpeditionFromWorld'] as ((result: ExpeditionResult) => void) | undefined;
-    finish?.({ remaining: { ...this.supplies }, loot: { ...this.carriedLoot }, claimedMines: [...persistentClaimedMines], died });
+    const build = this.scene.get('BuildScene') as Phaser.Scene & Record<string, any>;
+    if (!died) {
+      for (const [key, amount] of Object.entries(this.carriedLoot)) {
+        build[key] = Math.max(0, Number(build[key] ?? 0)) + Math.max(0, amount);
+      }
+    }
+    build['claimedExpeditionMines'] = [...persistentClaimedMines];
+    const refreshResources = build['refreshResources'] as (() => void) | undefined;
+    refreshResources?.call(build);
+    const finish = build['finishExpeditionFromWorld'] as ((remaining: Supplies) => void) | undefined;
+    finish?.({ ...this.supplies });
+    const showToast = build['showToast'] as ((message: string) => void) | undefined;
+    if (died) showToast?.call(build, '你在荒野中倒下了，携带的补给和战利品全部遗失');
+    else if (Object.keys(this.carriedLoot).length > 0) showToast?.call(build, '远征战利品已经送回营地');
     this.scene.stop(); this.scene.wake('BuildScene');
   }
 }
