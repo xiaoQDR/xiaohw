@@ -446,7 +446,7 @@ export class ExpeditionScene extends Phaser.Scene {
 
   private returnToCamp(died = false): void {
     if (this.encounter && !died) { this.setMessage('战斗中不能直接返回营地，请先撤离。'); return; }
-    const build = this.scene.get('BuildScene') as Phaser.Scene & Record<string, any>;
+    const build = this.scene.get('build') as Phaser.Scene & Record<string, any>;
     if (!died) {
       for (const [key, amount] of Object.entries(this.carriedLoot)) {
         build[key] = Math.max(0, Number(build[key] ?? 0)) + Math.max(0, amount);
@@ -460,7 +460,7 @@ export class ExpeditionScene extends Phaser.Scene {
     const showToast = build['showToast'] as ((message: string) => void) | undefined;
     if (died) showToast?.call(build, '你在荒野中倒下了，携带的补给和战利品全部遗失');
     else if (Object.keys(this.carriedLoot).length > 0) showToast?.call(build, '远征战利品已经送回营地');
-    this.scene.stop();
-    this.scene.wake('BuildScene');
+    this.scene.wake('build');
+    this.scene.stop('ExpeditionScene');
   }
 }
