@@ -5,12 +5,7 @@ import { WORLD_TILE } from '../game/worldMap';
 type AnyScene = ExpeditionScene & Record<string, any>;
 type Loot = Record<string, number>;
 
-type EnemyProfile = {
-  name: string;
-  hpMul: number;
-  damageMul: number;
-  trait: string;
-};
+type EnemyProfile = { name: string; hpMul: number; damageMul: number; trait: string };
 
 const WEAPON_COOLDOWN: Record<string, number> = {
   boneSpear: 900,
@@ -21,20 +16,9 @@ const WEAPON_COOLDOWN: Record<string, number> = {
 };
 
 const LOOT_WEIGHT: Record<string, number> = {
-  wood: 0.25,
-  fur: 0.35,
-  meat: 0.5,
-  leather: 0.5,
-  curedMeat: 0.5,
-  iron: 0.8,
-  coal: 0.7,
-  sulphur: 0.7,
-  steel: 1,
-  medicine: 1,
-  scales: 0.4,
-  teeth: 0.25,
-  cloth: 0.25,
-  bullets: 0.05,
+  wood: 0.25, fur: 0.35, meat: 0.5, leather: 0.5, curedMeat: 0.5,
+  iron: 0.8, coal: 0.7, sulphur: 0.7, steel: 1, medicine: 1,
+  scales: 0.4, teeth: 0.25, cloth: 0.25, bullets: 0.05,
 };
 
 function profileFor(tile: string): EnemyProfile {
@@ -49,23 +33,16 @@ function profileFor(tile: string): EnemyProfile {
   return { name: '荒野敌人', hpMul: 1, damageMul: 1, trait: '未知威胁' };
 }
 
-function weaponId(scene: AnyScene): string {
-  return String(scene.gear?.weapon ?? 'unarmed');
-}
+function weaponId(scene: AnyScene): string { return String(scene.gear?.weapon ?? 'unarmed'); }
+function cooldownMs(scene: AnyScene): number { return WEAPON_COOLDOWN[weaponId(scene)] ?? WEAPON_COOLDOWN.unarmed; }
 
-function cooldownMs(scene: AnyScene): number {
-  return WEAPON_COOLDOWN[weaponId(scene)] ?? WEAPON_COOLDOWN.unarmed;
-}
-
-function lootWeight(scene: AnyScene): number {
+function carriedWeight(scene: AnyScene): number {
   const carried = Object.entries(scene.carriedLoot ?? {}).reduce((sum, [key, amount]) => sum + (LOOT_WEIGHT[key] ?? 0.5) * Number(amount || 0), 0);
   const supplies = Number(scene.supplies?.curedMeat ?? 0) * 0.5 + Number(scene.supplies?.medicine ?? 0) + Number(scene.supplies?.bullets ?? 0) * 0.05;
   return Math.round((carried + supplies) * 10) / 10;
 }
 
-function remainingCapacity(scene: AnyScene): number {
-  return Math.max(0, Number(scene.capacity ?? 8) - lootWeight(scene));
-}
+function remainingCapacity(scene: AnyScene): number { return Math.max(0, Number(scene.capacity ?? 8) - carriedWeight(scene)); }
 
 function addLootWithinCapacity(scene: AnyScene, loot: Loot): { taken: Loot; dropped: Loot } {
   const taken: Loot = {};
@@ -97,6 +74,7 @@ export function installExpeditionCombatDepthPatch(): void {
   const originalStartEncounter = proto.startEncounter;
   const originalRefreshEncounter = proto.refreshEncounter;
   const originalRefreshHud = proto.refreshHud;
+  const originalWinEncounter = proto.winEncounter;
 
   proto.startEncounter = function patchedStartEncounter(this: AnyScene, key: string, tile: string, name: string, danger: number) {
     originalStartEncounter.call(this, key, tile, name, danger);
@@ -134,79 +112,48 @@ export function installExpeditionCombatDepthPatch(): void {
       return;
     }
     if (weaponId(this) === 'rifle') {
-      if (Number(this.supplies?.bullets ?? 0) <= 0) {
-        this.setMessage('没有子弹，无法开火。');
-        return;
-      }
+      if (Number(this.supplies?.bullets ?? 0) <= 0) { this.setMessage('没有子弹，无法开火。'); return; }
       this.supplies.bullets -= 1;
     }
-
     this.nextAttackAt = now + cooldownMs(this);
     this.encounter.hp = Math.max(0, Number(this.encounter.hp) - Number(this.attack ?? 1));
-    if (this.encounter.hp <= 0) {
-      this.winEncounter();
-      return;
-    }
+    if (this.encounter.hp <= 0) { this.winEncounter(); return; }
 
     let enemyDamage = Math.max(1, Number(this.encounter.enemyDamage ?? 1));
     if (this.encounter.enemyName === '洞穴野兽' && Phaser.Math.Between(1, 100) <= 25) enemyDamage += 1;
     if (this.encounter.enemyName === '战场猎手' && Phaser.Math.Between(1, 100) <= 20) enemyDamage *= 2;
     this.hp = Math.max(0, Number(this.hp ?? 0) - enemyDamage);
-    if (this.hp <= 0) {
-      this.dieInWilderness();
-      return;
-    }
+    if (this.hp <= 0) { this.dieInWilderness(); return; }
     this.refreshEncounter();
     this.refreshHud();
-    this.time.delayedCall(cooldownMs(this), () => {
-      if (this.encounter) this.refreshEncounter();
-    });
+    this.time.delayedCall(cooldownMs(this), () => { if (this.encounter) this.refreshEncounter(); });
   };
 
   proto.winEncounter = function patchedWinEncounter(this: AnyScene) {
     if (!this.encounter) return;
-    const e = this.encounter;
+    const e = { ...this.encounter };
     const loot = this.generateLoot(e.tile, e.danger) as Loot;
     const result = addLootWithinCapacity(this, loot);
-    const cleared = (globalThis as any).__xiaohwExpeditionCleared as Set<string> | undefined;
-    // Preserve the scene's own persistent clearing by calling through its public state effects manually.
-    const mineTiles: string[] = [WORLD_TILE.ironMine, WORLD_TILE.coalMine, WORLD_TILE.sulphurMine];
-    const persistentCleared = (ExpeditionScene as any).__persistentCleared as Set<string> | undefined;
-    void cleared; void persistentCleared;
 
-    // Reuse original persistence through the same sets indirectly: mark the encounter as defeated, then let a compact local copy finish it.
-    const sceneModuleState = this as AnyScene;
-    const key = e.key;
-    const tile = e.tile;
-    // The original scene reads these global module sets in render/inspect. Expose a helper state on the instance too.
-    if (!sceneModuleState.__clearedKeys) sceneModuleState.__clearedKeys = new Set<string>();
-    sceneModuleState.__clearedKeys.add(key);
-
-    // Call original win persistence with loot temporarily suppressed, then restore our capacity-limited loot.
-    const before = { ...(this.carriedLoot ?? {}) };
-    for (const [k, v] of Object.entries(result.taken)) this.carriedLoot[k] = Math.max(0, Number(this.carriedLoot[k] ?? 0) - v);
     const originalGenerateLoot = this.generateLoot;
     this.generateLoot = () => ({});
-    const originalWin = proto.__originalWinEncounter as ((this: AnyScene) => void) | undefined;
-    if (originalWin) originalWin.call(this);
+    originalWinEncounter.call(this);
     this.generateLoot = originalGenerateLoot;
-    this.carriedLoot = before;
 
     const takenText = describeLoot(this, result.taken) || '没有可携带的物资';
     const droppedText = describeLoot(this, result.dropped);
+    const mineTiles: string[] = [WORLD_TILE.ironMine, WORLD_TILE.coalMine, WORLD_TILE.sulphurMine];
     this.setMessage(
       `已清理 ${e.name}。带走：${takenText}` +
       `${droppedText ? `\n因负重不足留下：${droppedText}` : ''}` +
-      `${mineTiles.includes(tile) ? '\n矿场已占领。' : ''}`,
+      `${mineTiles.includes(e.tile) ? '\n矿场已占领。' : ''}`,
     );
     this.refreshHud();
   };
 
-  proto.__originalWinEncounter = proto.winEncounter;
-
   proto.refreshHud = function patchedRefreshHud(this: AnyScene) {
     originalRefreshHud.call(this);
     const base = this.hudText?.text ?? '';
-    this.hudText?.setText(`${base}    负重 ${lootWeight(this).toFixed(1)}/${Number(this.capacity ?? 8)}`);
+    this.hudText?.setText(`${base}    负重 ${carriedWeight(this).toFixed(1)}/${Number(this.capacity ?? 8)}`);
   };
 }
