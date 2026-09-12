@@ -9,6 +9,7 @@ import { installDynamicBuildCostPatch } from './ui/dynamicBuildCostPatch';
 import { installTestTimeScalePatch } from './ui/testTimeScalePatch';
 import { installHunterWorkPatch } from './ui/hunterWorkPatch';
 import { installDebugResourcePatch } from './ui/debugResourcePatch';
+import { installTradingPostPatch } from './ui/tradingPostPatch';
 
 installJobPanelPatch();
 installTrapSystemPatch();
@@ -18,6 +19,7 @@ installDynamicBuildCostPatch();
 installTestTimeScalePatch();
 installHunterWorkPatch();
 installDebugResourcePatch();
+installTradingPostPatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
