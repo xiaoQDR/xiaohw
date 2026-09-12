@@ -6,7 +6,7 @@ type AnyFn = (...args: any[]) => any;
 const JOB_TEXTURE: Record<string, string> = {
   gatherer: 'worker',
   hunter: 'worker-hunter',
-  trapper: 'worker-trapper',
+  explorer: 'worker-explorer',
   tanner: 'worker-tanner',
   charcutier: 'worker-charcutier',
 };
@@ -26,7 +26,7 @@ export function installJobAppearancePatch(): void {
   proto.preload = function patchedPreload(this: BuildScene, ...args: any[]) {
     const result = originalPreload.apply(this, args);
     this.load.svg('worker-hunter', 'assets/workers/hunter.svg', { width: 96, height: 140 });
-    this.load.svg('worker-trapper', 'assets/workers/trapper.svg', { width: 96, height: 140 });
+    this.load.svg('worker-explorer', 'assets/workers/explorer.svg', { width: 96, height: 140 });
     this.load.svg('worker-tanner', 'assets/workers/tanner.svg', { width: 96, height: 140 });
     this.load.svg('worker-charcutier', 'assets/workers/charcutier.svg', { width: 96, height: 140 });
     return result;
