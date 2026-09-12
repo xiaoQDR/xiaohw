@@ -39,11 +39,8 @@ function createDenseForest(scene: BuildScene): void {
   const world = getPrivate<Phaser.GameObjects.Container>(scene, 'world');
   const trees = getPrivate<Phaser.GameObjects.Image[]>(scene, 'forestTrees') ?? [];
   const points: Array<{ c: number; r: number; ox: number; oy: number }> = [];
-
   const add = (c: number, r: number, ox = 0, oy = 0) => points.push({ c, r, ox, oy });
 
-  // Three irregular belts around the expanded settlement. Trees are deliberately
-  // kept outside the buildable 0..12 x 0..14 rectangle.
   for (let c = -4; c <= EXPANDED_COLS + 3; c += 1) {
     add(c, -3, Phaser.Math.Between(-34, 34), Phaser.Math.Between(-24, 24));
     if (c % 2 === 0) add(c, -5, Phaser.Math.Between(-42, 42), Phaser.Math.Between(-28, 28));
@@ -83,7 +80,6 @@ export function installWorldExpansionPatch(): void {
     createDenseForest(this);
   };
 
-  const originalCanPlace = proto.canPlace;
   proto.canPlace = function patchedCanPlace(this: BuildScene, def: { footprint: [number, number] }, col: number, row: number) {
     if (col < 0 || row < 0 || col + def.footprint[0] > EXPANDED_COLS || row + def.footprint[1] > EXPANDED_ROWS) return false;
     const occupied = getPrivate<Set<string>>(this, 'occupied') ?? new Set<string>();
@@ -92,10 +88,6 @@ export function installWorldExpansionPatch(): void {
         if (occupied.has(`${col + x},${row + y}`)) return false;
       }
     }
-    // Keep any later balance/build-condition wrappers authoritative.
-    if (originalCanPlace && !(originalCanPlace as AnyFn).__expandedBase) return true;
     return true;
   };
-
-  (proto.canPlace as AnyFn).__expandedBase = true;
 }
