@@ -3,8 +3,8 @@ import { BuildScene } from '../scenes/BuildScene';
 import { ExpeditionScene } from '../scenes/ExpeditionScene';
 import { WORLD_TILE } from '../game/worldMap';
 
-type AnyBuild = BuildScene & Record<string, any>;
-type AnyExpedition = ExpeditionScene & Record<string, any>;
+type AnyBuild = Phaser.Scene & Record<string, any>;
+type AnyExpedition = Phaser.Scene & Record<string, any>;
 
 type StarshipState = {
   hull: number;
@@ -187,7 +187,7 @@ export function installStarshipProgressionPatch(): void {
       const badge = this.add.text(860, 350, '', { fontFamily: 'system-ui, sans-serif', fontSize: '20px', color: '#fff0cf', fontStyle: 'bold', backgroundColor: '#2d3730', padding: { x: 12, y: 7 } }).setOrigin(0.5).setDepth(530).setVisible(false);
       world?.add([ship, badge]);
       const state = createPanel(this, ship, badge);
-      uiStates.set(this, state);
+      uiStates.set(this as unknown as BuildScene, state);
       refreshUi(this, state);
       positionUi(this, state);
       return result;
@@ -195,7 +195,7 @@ export function installStarshipProgressionPatch(): void {
 
     buildProto.update = function patchedUpdate(this: AnyBuild, ...args: any[]) {
       const result = originalUpdate.apply(this, args);
-      const state = uiStates.get(this);
+      const state = uiStates.get(this as unknown as BuildScene);
       if (state) {
         refreshUi(this, state);
         positionUi(this, state);
@@ -215,7 +215,7 @@ export function installStarshipProgressionPatch(): void {
       const build = this.scene.get('build') as AnyBuild;
       build.starshipRecovered = true;
       getStarshipState(build);
-      const state = uiStates.get(build);
+      const state = uiStates.get(build as unknown as BuildScene);
       if (state) refreshUi(build, state);
       this.setMessage?.('坠毁星舰已经清理。你决定把它拖回营地，作为特殊设施继续修复。');
     };
