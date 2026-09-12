@@ -16,6 +16,11 @@ export interface WorldLandmarkDefinition {
   danger: number;
 }
 
+export interface WorldCoordinate {
+  x: number;
+  y: number;
+}
+
 export const WORLD_LANDMARKS: WorldLandmarkDefinition[] = [
   { tile: 'I', count: 1, minRadius: 5, maxRadius: 5, name: '铁矿', danger: 8 },
   { tile: 'C', count: 1, minRadius: 10, maxRadius: 10, name: '煤矿', danger: 12 },
@@ -32,6 +37,7 @@ export const WORLD_LANDMARKS: WorldLandmarkDefinition[] = [
 ];
 
 const terrain = new Set<string>([WORLD_TILE.forest, WORLD_TILE.field, WORLD_TILE.barrens]);
+let lastGeneratedWorldMap: string[][] | null = null;
 
 function isTerrain(tile: string | undefined): boolean {
   return !!tile && terrain.has(tile);
@@ -100,7 +106,20 @@ export function generateWorldMap(): string[][] {
   for (const landmark of WORLD_LANDMARKS) {
     for (let index = 0; index < landmark.count; index += 1) placeLandmark(landmark, map);
   }
+  lastGeneratedWorldMap = map;
   return map;
+}
+
+export function getLastWorldTileCoordinates(tile: string): WorldCoordinate[] {
+  if (!lastGeneratedWorldMap) return [];
+  const result: WorldCoordinate[] = [];
+  for (let ix = 0; ix < lastGeneratedWorldMap.length; ix += 1) {
+    for (let iy = 0; iy < lastGeneratedWorldMap[ix].length; iy += 1) {
+      if (lastGeneratedWorldMap[ix][iy] !== tile) continue;
+      result.push({ x: ix - WORLD_RADIUS, y: iy - WORLD_RADIUS });
+    }
+  }
+  return result;
 }
 
 export function getWorldTile(map: string[][], x: number, y: number): string | undefined {
