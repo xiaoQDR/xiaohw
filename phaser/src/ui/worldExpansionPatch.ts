@@ -145,24 +145,21 @@ function createCentralTavern(scene: BuildScene): void {
   setPrivate(scene, 'treeSprite', tavern);
   ['7,8', '8,8', '7,9', '8,9'].forEach((key) => getPrivate<Set<string>>(scene, 'occupied')?.add(key));
 
-  const badgeBg = scene.add.rectangle(p.x, p.y - 225, 250, 58, 0x253226, 0.94).setStrokeStyle(2, 0x8c7650, 1);
-  const status = scene.add.text(p.x, p.y - 225, '', { fontFamily: 'system-ui, sans-serif', fontSize: '22px', color: '#f5edd9', fontStyle: 'bold' }).setOrigin(0.5);
+  const badgeBg = scene.add.rectangle(p.x, p.y - 225, 300, 58, 0x253226, 0.94).setStrokeStyle(2, 0x8c7650, 1);
+  const status = scene.add.text(p.x, p.y - 225, '远征营 · 点击整备', { fontFamily: 'system-ui, sans-serif', fontSize: '22px', color: '#f5edd9', fontStyle: 'bold' }).setOrigin(0.5);
   const badge = scene.add.container(0, 0, [badgeBg, status]).setDepth(430);
   world?.add(badge);
   setPrivate(scene, 'treeStatus', status);
   setPrivate(scene, 'treeBadge', badge);
-  setPrivate(scene, 'treeReadyAt', scene.time.now + 5000);
-  tavern.on('pointerdown', () => (scene as unknown as { collectTreeWood?: () => void }).collectTreeWood?.call(scene));
+  tavern.on('pointerdown', (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+    event.stopPropagation();
+    getPrivate<() => void>(scene, 'openExpeditionCamp')?.();
+  });
 }
 
 function updateTavernStatus(scene: BuildScene): void {
   const status = getPrivate<Phaser.GameObjects.Text>(scene, 'treeStatus');
-  if (!status) return;
-  const remaining = Math.max(0, Number(getPrivate<number>(scene, 'treeReadyAt') ?? 0) - scene.time.now);
-  const placed = getPrivate<Array<{ id: string }>>(scene, 'placed') ?? [];
-  const amount = placed.some((building) => building.id === 'cart') ? 50 : 10;
-  if (remaining <= 0) status.setText(`酒馆补给 +${amount}`).setColor('#f5e7a6');
-  else status.setText(`酒馆补给 ${Math.ceil(remaining / 1000)}s`).setColor('#d4ddca');
+  status?.setText('远征营 · 点击整备').setColor('#f5e7a6');
 }
 
 export function installWorldExpansionPatch(): void {
