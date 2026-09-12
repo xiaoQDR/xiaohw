@@ -7,8 +7,8 @@ const TILE_W = 132;
 const TILE_H = 66;
 const EXPANDED_COLS = 13;
 const EXPANDED_ROWS = 15;
-const HARVEST_COL = 14.1;
-const HARVEST_ROW = 10.2;
+const TAVERN_COL = 6;
+const TAVERN_ROW = 7;
 
 function getPrivate<T>(scene: BuildScene, key: string): T | undefined {
   return (scene as unknown as Record<string, unknown>)[key] as T | undefined;
@@ -43,10 +43,9 @@ function drawExpandedGrid(scene: BuildScene): void {
 
 function buildExplorerRoad(scene: BuildScene): Phaser.Math.Vector2[] {
   const points = [
-    gridToWorld(scene, 4.2, 3.4),
-    gridToWorld(scene, 6.0, 4.5),
-    gridToWorld(scene, 8.2, 5.2),
-    gridToWorld(scene, 10.4, 5.8),
+    gridToWorld(scene, 6.2, 7.4),
+    gridToWorld(scene, 8.0, 7.0),
+    gridToWorld(scene, 10.1, 6.6),
     gridToWorld(scene, 12.4, 6.2),
     gridToWorld(scene, 14.2, 6.5),
     gridToWorld(scene, 16.1, 6.8),
@@ -107,25 +106,20 @@ function createDenseForest(scene: BuildScene): void {
   const road = buildExplorerRoad(scene);
   drawMainRoad(scene, road);
 
-  const harvestPoint = gridToWorld(scene, HARVEST_COL, HARVEST_ROW);
   type TreePoint = { c: number; r: number; ox: number; oy: number; scale: number; tint?: number };
   const points: TreePoint[] = [];
 
   const add = (c: number, r: number, ox = 0, oy = 0, scale = 1, tint?: number) => {
-    // Hard rule: no forest tree may enter the 13 x 15 buildable rectangle.
     if (insideBuildArea(c, r)) return;
     const p = gridToWorld(scene, c, r);
     const worldPoint = new Phaser.Math.Vector2(p.x + ox, p.y + oy);
     if (nearRoad(worldPoint, road, 112)) return;
-    if (Phaser.Math.Distance.Between(worldPoint.x, worldPoint.y, harvestPoint.x, harvestPoint.y) < 180) return;
     points.push({ c, r, ox, oy, scale, tint });
   };
 
-  // Fill the whole world outside the settlement with jungle, instead of drawing a perimeter ring.
   for (let c = -8; c <= EXPANDED_COLS + 11; c += 0.86) {
     for (let r = -8; r <= EXPANDED_ROWS + 9; r += 0.9) {
       if (insideBuildArea(c, r)) continue;
-      // Small gaps keep the forest organic while still reading as continuous jungle.
       if ((Math.round(c * 17 + r * 13) % 11) === 0) continue;
       add(
         c,
@@ -138,7 +132,6 @@ function createDenseForest(scene: BuildScene): void {
     }
   }
 
-  // Extra density in the deep eastern forest where explorers disappear.
   for (let c = EXPANDED_COLS + 1; c <= EXPANDED_COLS + 11; c += 0.72) {
     for (let r = -3; r <= EXPANDED_ROWS + 5; r += 0.78) {
       if ((Math.round(c * 9 + r * 5) % 4) === 0) continue;
@@ -165,38 +158,62 @@ function createDenseForest(scene: BuildScene): void {
   });
 }
 
-function createHarvestTreeOutside(scene: BuildScene): void {
+function createCentralTavern(scene: BuildScene): void {
   const world = getPrivate<Phaser.GameObjects.Container>(scene, 'world');
-  const p = gridToWorld(scene, HARVEST_COL, HARVEST_ROW);
-  const tree = scene.add.image(p.x, p.y - 122, 'harvest-tree')
-    .setDisplaySize(420, 380)
-    .setDepth(315)
+  const p = gridToWorld(scene, TAVERN_COL, TAVERN_ROW);
+  const tavern = scene.add.image(p.x, p.y - 78, 'central-tavern')
+    .setDisplaySize(300, 244)
+    .setDepth(340)
     .setInteractive({ useHandCursor: true });
-  world?.add(tree);
-  setPrivate(scene, 'treeSprite', tree);
+  world?.add(tavern);
 
-  const badgeBg = scene.add.rectangle(p.x + 8, p.y - 338, 250, 58, 0x253226, 0.9)
-    .setStrokeStyle(2, 0x78906a, 1);
-  const treeStatus = scene.add.text(p.x + 8, p.y - 338, '', {
+  // Reuse the existing manual-resource hooks so early economy remains intact.
+  setPrivate(scene, 'treeSprite', tavern);
+  ['5,6', '6,6', '5,7', '6,7'].forEach((key) => getPrivate<Set<string>>(scene, 'occupied')?.add(key));
+
+  const badgeBg = scene.add.rectangle(p.x, p.y - 225, 250, 58, 0x253226, 0.94)
+    .setStrokeStyle(2, 0x8c7650, 1);
+  const status = scene.add.text(p.x, p.y - 225, '', {
     fontFamily: 'system-ui, sans-serif', fontSize: '22px', color: '#f5edd9', fontStyle: 'bold',
   }).setOrigin(0.5);
-  const treeBadge = scene.add.container(0, 0, [badgeBg, treeStatus]).setDepth(430);
-  world?.add(treeBadge);
+  const badge = scene.add.container(0, 0, [badgeBg, status]).setDepth(430);
+  world?.add(badge);
 
-  setPrivate(scene, 'treeStatus', treeStatus);
-  setPrivate(scene, 'treeBadge', treeBadge);
+  setPrivate(scene, 'treeStatus', status);
+  setPrivate(scene, 'treeBadge', badge);
   setPrivate(scene, 'treeReadyAt', scene.time.now + 5000);
 
-  tree.on('pointerdown', () => {
+  tavern.on('pointerdown', () => {
     const collect = (scene as unknown as { collectTreeWood?: () => void }).collectTreeWood;
     collect?.call(scene);
   });
+}
+
+function updateTavernStatus(scene: BuildScene): void {
+  const status = getPrivate<Phaser.GameObjects.Text>(scene, 'treeStatus');
+  if (!status) return;
+  const readyAt = Number(getPrivate<number>(scene, 'treeReadyAt') ?? 0);
+  const remaining = Math.max(0, readyAt - scene.time.now);
+  const placed = getPrivate<Array<{ id: string }>>(scene, 'placed') ?? [];
+  const amount = placed.some((building) => building.id === 'cart') ? 50 : 10;
+  if (remaining <= 0) {
+    status.setText(`酒馆补给 +${amount}`).setColor('#f5e7a6');
+  } else {
+    status.setText(`酒馆补给 ${Math.ceil(remaining / 1000)}s`).setColor('#d4ddca');
+  }
 }
 
 export function installWorldExpansionPatch(): void {
   const proto = BuildScene.prototype as unknown as Record<string, AnyFn>;
   if ((proto as Record<string, unknown>).__worldExpansionPatched) return;
   (proto as Record<string, unknown>).__worldExpansionPatched = true;
+
+  const originalPreload = proto.preload;
+  proto.preload = function patchedPreload(this: BuildScene, ...args: any[]) {
+    const result = originalPreload.apply(this, args);
+    this.load.svg('central-tavern', 'assets/buildings/tavern.svg', { width: 320, height: 260 });
+    return result;
+  };
 
   proto.drawGrid = function patchedDrawGrid(this: BuildScene) {
     drawExpandedGrid(this);
@@ -207,7 +224,11 @@ export function installWorldExpansionPatch(): void {
   };
 
   proto.createHarvestTree = function patchedCreateHarvestTree(this: BuildScene) {
-    createHarvestTreeOutside(this);
+    createCentralTavern(this);
+  };
+
+  proto.updateTreeStatus = function patchedUpdateTreeStatus(this: BuildScene) {
+    updateTavernStatus(this);
   };
 
   proto.canPlace = function patchedCanPlace(this: BuildScene, def: { footprint: [number, number] }, col: number, row: number) {
