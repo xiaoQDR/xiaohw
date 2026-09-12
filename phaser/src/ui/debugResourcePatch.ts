@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BuildScene } from '../scenes/BuildScene';
+import { getLastWorldTileCoordinates, WORLD_TILE } from '../game/worldMap';
 
 type AnyFn = (...args: any[]) => any;
 type ResourceKey = 'wood' | 'meat' | 'fur' | 'bait' | 'leather' | 'curedMeat' | 'scales' | 'teeth' | 'cloth' | 'charm' | 'medicine' | 'iron' | 'coal' | 'sulphur' | 'steel' | 'bullets';
@@ -73,6 +74,19 @@ function addCombatTestLoadout(scene: BuildScene, state: DebugState): void {
   refreshPanel(scene, state);
   (scene as unknown as { showToast?: (message: string) => void }).showToast?.('已补齐远征战斗测试装备与补给');
 }
+function showShipCoordinates(scene: BuildScene): void {
+  const ship = getLastWorldTileCoordinates(WORLD_TILE.ship)[0];
+  const wreck = getLastWorldTileCoordinates(WORLD_TILE.executioner)[0];
+  const showToast = (scene as unknown as { showToast?: (message: string) => void }).showToast;
+  if (!ship && !wreck) {
+    showToast?.call(scene, '世界地图尚未生成，请先进入一次远征');
+    return;
+  }
+  const parts: string[] = [];
+  if (ship) parts.push(`坠毁星舰 W：${ship.x}, ${ship.y}`);
+  if (wreck) parts.push(`受创战舰 X：${wreck.x}, ${wreck.y}`);
+  showToast?.call(scene, parts.join('   '));
+}
 function createUi(scene: BuildScene): DebugState {
   const buttonBg = scene.add.rectangle(0, 0, 196, 64, 0x38443a, 0.98).setStrokeStyle(2, 0x829276, 1).setInteractive({ useHandCursor: true });
   const buttonLabel = scene.add.text(0, 0, '测试工具', { fontFamily: 'system-ui, sans-serif', fontSize: '21px', color: '#fff1dc', fontStyle: 'bold' }).setOrigin(0.5);
@@ -111,9 +125,11 @@ function createUi(scene: BuildScene): DebugState {
     panel.add([rowBg, name, valueBg, value, plus, plusText]);
   });
 
-  const combatBg = scene.add.rectangle(0, 610, 760, 64, 0x6a553c, 1).setStrokeStyle(2, 0xa98a61, 1).setInteractive({ useHandCursor: true });
-  const combatText = scene.add.text(0, 610, '一键远征战斗测试', { fontFamily: 'system-ui, sans-serif', fontSize: '22px', color: '#fff0cf', fontStyle: 'bold' }).setOrigin(0.5);
-  panel.add([combatBg, combatText]);
+  const combatBg = scene.add.rectangle(-195, 610, 370, 64, 0x6a553c, 1).setStrokeStyle(2, 0xa98a61, 1).setInteractive({ useHandCursor: true });
+  const combatText = scene.add.text(-195, 610, '一键远征战斗测试', { fontFamily: 'system-ui, sans-serif', fontSize: '20px', color: '#fff0cf', fontStyle: 'bold' }).setOrigin(0.5);
+  const shipBg = scene.add.rectangle(195, 610, 370, 64, 0x465b66, 1).setStrokeStyle(2, 0x7692a0, 1).setInteractive({ useHandCursor: true });
+  const shipText = scene.add.text(195, 610, '显示星舰坐标', { fontFamily: 'system-ui, sans-serif', fontSize: '20px', color: '#e9f3f7', fontStyle: 'bold' }).setOrigin(0.5);
+  panel.add([combatBg, combatText, shipBg, shipText]);
 
   const setOpen = (open: boolean) => { state.open = open; panel.setVisible(open); if (open) refreshPanel(scene, state); };
   buttonBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); setOpen(!state.open); });
@@ -127,6 +143,10 @@ function createUi(scene: BuildScene): DebugState {
   combatBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
     event.stopPropagation();
     addCombatTestLoadout(scene, state);
+  });
+  shipBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+    event.stopPropagation();
+    showShipCoordinates(scene);
   });
   shade.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
   bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
