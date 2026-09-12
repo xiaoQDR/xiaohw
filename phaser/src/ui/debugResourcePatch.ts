@@ -119,11 +119,11 @@ function createUi(scene: BuildScene): DebugState {
       fontFamily: 'system-ui, sans-serif', fontSize: '18px', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5);
     state.valueTexts.set(item.key, value);
-    valueBg.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => {
+    valueBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
       openNumericEditor(scene, state, item.key, item.label);
     });
-    plus.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => {
+    plus.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
       setResource(scene, item.key, getResource(scene, item.key) + 100);
       refreshPanel(scene, state);
@@ -137,16 +137,16 @@ function createUi(scene: BuildScene): DebugState {
     if (open) refreshPanel(scene, state);
   };
 
-  buttonBg.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => {
+  buttonBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
     event.stopPropagation();
     setOpen(!state.open);
   });
-  closeBg.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => {
+  closeBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
     event.stopPropagation();
     setOpen(false);
   });
-  shade.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => event.stopPropagation());
-  bg.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+  shade.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+  bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
 
   updatePosition(scene, state);
   return state;
