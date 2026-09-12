@@ -157,7 +157,10 @@ function layout(scene: BuildScene, state: NavState, snap = false): void {
     const visible = state.buildProgress > 0.01;
     buildMenu.setVisible(visible);
     const openY = view.bottom - BUILD_MENU_H - NAV_H;
-    buildMenu.y = openY + (1 - state.buildProgress) * BUILD_MENU_H;
+    const yPos = openY + (1 - state.buildProgress) * BUILD_MENU_H;
+    const setBuildMenuY = getPrivate<(y: number) => void>(scene, 'setBuildMenuY');
+    if (setBuildMenuY) setBuildMenuY(yPos);
+    else buildMenu.y = yPos;
   }
 }
 
