@@ -15,6 +15,18 @@ const WEAPON_COOLDOWN: Record<string, number> = {
   unarmed: 1100,
 };
 
+const ARMOUR_REDUCTION: Record<string, number> = {
+  lArmour: 1,
+  iArmour: 2,
+  sArmour: 3,
+};
+
+const ARMOUR_NAME: Record<string, string> = {
+  lArmour: '皮甲',
+  iArmour: '铁甲',
+  sArmour: '钢甲',
+};
+
 const LOOT_WEIGHT: Record<string, number> = {
   wood: 0.25, fur: 0.35, meat: 0.5, leather: 0.5, curedMeat: 0.5,
   iron: 0.8, coal: 0.7, sulphur: 0.7, steel: 1, medicine: 1,
@@ -35,6 +47,13 @@ function profileFor(tile: string): EnemyProfile {
 
 function weaponId(scene: AnyScene): string { return String(scene.gear?.weapon ?? 'unarmed'); }
 function cooldownMs(scene: AnyScene): number { return WEAPON_COOLDOWN[weaponId(scene)] ?? WEAPON_COOLDOWN.unarmed; }
+function armourId(scene: AnyScene): string { return String(scene.gear?.armour ?? ''); }
+function armourReduction(scene: AnyScene): number { return ARMOUR_REDUCTION[armourId(scene)] ?? 0; }
+function armourLabel(scene: AnyScene): string {
+  const id = armourId(scene);
+  const reduction = armourReduction(scene);
+  return id ? `${ARMOUR_NAME[id] ?? '护甲'} · 减伤 ${reduction}` : '无护甲 · 减伤 0';
+}
 
 function carriedWeight(scene: AnyScene): number {
   const carried = Object.entries(scene.carriedLoot ?? {}).reduce((sum, [key, amount]) => sum + (LOOT_WEIGHT[key] ?? 0.5) * Number(amount || 0), 0);
@@ -98,6 +117,7 @@ export function installExpeditionCombatDepthPatch(): void {
     this.encounterTitle?.setText(`${e.name} · ${e.enemyName ?? '敌人'}`);
     this.encounterText?.setText(
       `${base}\n敌人特性：${e.trait ?? '普通'}\n` +
+      `护甲：${armourLabel(this)}\n` +
       `武器节奏：${cooldownMs(this)}ms${remaining > 0 ? ` · 冷却 ${remaining.toFixed(1)}s` : ' · 可攻击'}`,
     );
   };
@@ -122,7 +142,10 @@ export function installExpeditionCombatDepthPatch(): void {
     let enemyDamage = Math.max(1, Number(this.encounter.enemyDamage ?? 1));
     if (this.encounter.enemyName === '洞穴野兽' && Phaser.Math.Between(1, 100) <= 25) enemyDamage += 1;
     if (this.encounter.enemyName === '战场猎手' && Phaser.Math.Between(1, 100) <= 20) enemyDamage *= 2;
+    const rawDamage = enemyDamage;
+    enemyDamage = Math.max(1, enemyDamage - armourReduction(this));
     this.hp = Math.max(0, Number(this.hp ?? 0) - enemyDamage);
+    this.setMessage(`敌人反击造成 ${enemyDamage} 伤害${rawDamage > enemyDamage ? `（护甲抵消 ${rawDamage - enemyDamage}）` : ''}。`);
     if (this.hp <= 0) { this.dieInWilderness(); return; }
     this.refreshEncounter();
     this.refreshHud();
