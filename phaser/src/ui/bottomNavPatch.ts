@@ -2,11 +2,11 @@ import Phaser from 'phaser';
 import { BuildScene } from '../scenes/BuildScene';
 
 type AnyFn = (...args: any[]) => any;
-type TabId = 'build' | 'inventory' | 'expedition';
+type TabId = 'build' | 'population' | 'inventory' | 'expedition';
 type NavState = {
   bar: Phaser.GameObjects.Container;
   bg: Phaser.GameObjects.Rectangle;
-  buttons: Record<TabId, { bg: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text }>;
+  buttons: Record<TabId, { container: Phaser.GameObjects.Container; bg: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text }>;
   buildOpen: boolean;
   buildProgress: number;
 };
@@ -26,9 +26,19 @@ function closeBuild(state: NavState): void {
 function setSelected(state: NavState, selected: TabId | null): void {
   (Object.keys(state.buttons) as TabId[]).forEach((id) => {
     const active = id === selected;
-    state.buttons[id].bg.setFillStyle(active ? 0x536b4d : 0x2d382f, 1);
-    state.buttons[id].text.setColor(active ? '#fff2ce' : '#c3cdbb');
+    const expedition = id === 'expedition';
+    state.buttons[id].bg.setFillStyle(
+      active ? (expedition ? 0x7a6544 : 0x536b4d) : (expedition ? 0x55462f : 0x2d382f),
+      1,
+    );
+    state.buttons[id].text.setColor(active ? '#fff2ce' : expedition ? '#ead8b4' : '#c3cdbb');
   });
+}
+
+function openPopulation(scene: BuildScene, state: NavState): void {
+  closeBuild(state);
+  setSelected(state, 'population');
+  getPrivate<() => void>(scene, 'openPopulationPanel')?.();
 }
 
 function openInventory(scene: BuildScene, state: NavState): void {
@@ -48,30 +58,33 @@ function toggleBuild(state: NavState): void {
   setSelected(state, state.buildOpen ? 'build' : null);
 }
 
-function createButton(scene: BuildScene, label: string): { container: Phaser.GameObjects.Container; bg: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text } {
-  const bg = scene.add.rectangle(0, 0, 260, 74, 0x2d382f, 1)
-    .setStrokeStyle(2, 0x708166, 1)
+function createButton(scene: BuildScene, label: string, expedition = false): { container: Phaser.GameObjects.Container; bg: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text } {
+  const bg = scene.add.rectangle(0, 0, 220, 74, expedition ? 0x55462f : 0x2d382f, 1)
+    .setStrokeStyle(2, expedition ? 0x9a8157 : 0x708166, 1)
     .setInteractive({ useHandCursor: true });
   const text = scene.add.text(0, 0, label, {
-    fontFamily: 'system-ui, sans-serif', fontSize: '26px', color: '#c3cdbb', fontStyle: 'bold',
+    fontFamily: 'system-ui, sans-serif', fontSize: '24px', color: expedition ? '#ead8b4' : '#c3cdbb', fontStyle: 'bold',
   }).setOrigin(0.5);
-  return { container: scene.add.container(0, 0, [bg, text]), bg, text };
+  const container = scene.add.container(0, 0, [bg, text]);
+  return { container, bg, text };
 }
 
 function createNav(scene: BuildScene): NavState {
   const bar = scene.add.container(0, 0).setDepth(10050);
   const bg = scene.add.rectangle(0, 0, 1, NAV_H, 0x1f2721, 0.995).setStrokeStyle(2, 0x617057, 1).setInteractive();
   const build = createButton(scene, '建造');
+  const population = createButton(scene, '人口管理');
   const inventory = createButton(scene, '背包');
-  const expedition = createButton(scene, '远征');
-  bar.add([bg, build.container, inventory.container, expedition.container]);
+  const expedition = createButton(scene, '远征', true);
+  bar.add([bg, build.container, population.container, inventory.container, expedition.container]);
 
   const state: NavState = {
     bar, bg,
     buttons: {
-      build: { bg: build.bg, text: build.text },
-      inventory: { bg: inventory.bg, text: inventory.text },
-      expedition: { bg: expedition.bg, text: expedition.text },
+      build: { container: build.container, bg: build.bg, text: build.text },
+      population: { container: population.container, bg: population.bg, text: population.text },
+      inventory: { container: inventory.container, bg: inventory.bg, text: inventory.text },
+      expedition: { container: expedition.container, bg: expedition.bg, text: expedition.text },
     },
     buildOpen: false,
     buildProgress: 0,
@@ -81,6 +94,10 @@ function createNav(scene: BuildScene): NavState {
   build.bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
     e.stopPropagation();
     toggleBuild(state);
+  });
+  population.bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+    e.stopPropagation();
+    openPopulation(scene, state);
   });
   inventory.bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
     e.stopPropagation();
@@ -114,23 +131,32 @@ function layout(scene: BuildScene, state: NavState, snap = false): void {
   state.bar.setPosition(view.left, view.bottom - NAV_H);
   state.bg.setPosition(width / 2, NAV_H / 2).setSize(width, NAV_H);
 
-  const buttonW = Math.min(290, Math.max(190, (width - 72) / 3));
-  const gap = 14;
-  const total = buttonW * 3 + gap * 2;
-  const startX = (width - total) / 2 + buttonW / 2;
-  const ids: TabId[] = ['build', 'inventory', 'expedition'];
-  ids.forEach((id, index) => {
-    const button = state.buttons[id].bg;
-    button.setSize(buttonW, 74);
-    const container = button.parentContainer;
-    container?.setPosition(startX + index * (buttonW + gap), NAV_H / 2);
+  const gap = 12;
+  const outerPad = 18;
+  const expeditionGap = 22;
+  const usable = width - outerPad * 2 - gap * 2 - expeditionGap;
+  const normalW = Math.min(235, Math.max(155, usable * 0.23));
+  const expeditionW = Math.min(235, Math.max(165, width - outerPad * 2 - normalW * 3 - gap * 2 - expeditionGap));
+  const y = NAV_H / 2;
+  let x = outerPad + normalW / 2;
+
+  (['build', 'population', 'inventory'] as TabId[]).forEach((id) => {
+    const button = state.buttons[id];
+    button.bg.setSize(normalW, 74);
+    button.container.setPosition(x, y);
+    x += normalW + gap;
   });
+
+  x += expeditionGap - gap;
+  const expedition = state.buttons.expedition;
+  expedition.bg.setSize(expeditionW, 74);
+  expedition.container.setPosition(x + expeditionW / 2, y);
 
   const buildMenu = getPrivate<Phaser.GameObjects.Container>(scene, 'menu');
   if (buildMenu) {
     const visible = state.buildProgress > 0.01;
     buildMenu.setVisible(visible);
-    const openY = view.bottom - BUILD_MENU_H;
+    const openY = view.bottom - BUILD_MENU_H - NAV_H;
     buildMenu.y = openY + (1 - state.buildProgress) * BUILD_MENU_H;
   }
 }
