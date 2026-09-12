@@ -3,16 +3,7 @@ import { BuildScene } from '../scenes/BuildScene';
 
 type AnyFn = (...args: any[]) => any;
 type BuildingId = 'trap' | 'cart' | 'hut' | 'lodge' | 'tradingPost' | 'tannery' | 'smokehouse' | 'workshop' | 'steelworks' | 'armoury';
-
-type BuildingDef = {
-  id: BuildingId;
-  name: string;
-  texture: string;
-  footprint: [number, number];
-  costWood: number;
-  displaySize: [number, number];
-};
-
+type BuildingDef = { id: BuildingId; name: string; texture: string; footprint: [number, number]; costWood: number; displaySize: [number, number] };
 type MenuState = {
   menu: Phaser.GameObjects.Container;
   bg: Phaser.GameObjects.Rectangle;
@@ -22,22 +13,22 @@ type MenuState = {
   viewport: Phaser.GameObjects.Container;
   content: Phaser.GameObjects.Container;
   maskShape: Phaser.GameObjects.Graphics;
-  swipe: Phaser.GameObjects.Rectangle;
-  left: Phaser.GameObjects.Container;
-  right: Phaser.GameObjects.Container;
   viewportWidth: number;
   scrollX: number;
   maxScroll: number;
   visibleIds: string;
-  dragStartX: number | null;
+  pointerId: number | null;
+  startX: number;
+  startY: number;
   contentStartX: number;
+  swiping: boolean;
 };
 
 const MENU_H = 430;
 const CARD_W = 252;
 const CARD_H = 270;
 const GAP = 18;
-const SIDE_PAD = 78;
+const SIDE_PAD = 30;
 const VIEW_Y = 92;
 
 const BUILDINGS: BuildingDef[] = [
@@ -54,17 +45,9 @@ const BUILDINGS: BuildingDef[] = [
 ];
 
 const stateMap = new WeakMap<BuildScene, MenuState>();
-
-function getPrivate<T>(scene: BuildScene, key: string): T | undefined {
-  return (scene as unknown as Record<string, unknown>)[key] as T | undefined;
-}
-function setPrivate(scene: BuildScene, key: string, value: unknown): void {
-  (scene as unknown as Record<string, unknown>)[key] = value;
-}
-function placedIds(scene: BuildScene): Set<string> {
-  const placed = getPrivate<Array<{ id: string }>>(scene, 'placed') ?? [];
-  return new Set(placed.map((b) => b.id));
-}
+function getPrivate<T>(scene: BuildScene, key: string): T | undefined { return (scene as unknown as Record<string, unknown>)[key] as T | undefined; }
+function setPrivate(scene: BuildScene, key: string, value: unknown): void { (scene as unknown as Record<string, unknown>)[key] = value; }
+function placedIds(scene: BuildScene): Set<string> { return new Set((getPrivate<Array<{ id: string }>>(scene, 'placed') ?? []).map((b) => b.id)); }
 function isUnlocked(scene: BuildScene, id: BuildingId): boolean {
   const built = placedIds(scene);
   if (id === 'trap' || id === 'cart' || id === 'hut') return true;
@@ -76,22 +59,15 @@ function isUnlocked(scene: BuildScene, id: BuildingId): boolean {
   return false;
 }
 function costLines(def: BuildingDef): string[] {
-  const lines = [`木材 ${def.costWood}`];
   const extra: Partial<Record<BuildingId, string>> = {
     lodge: '毛皮 10 · 肉 5', tradingPost: '毛皮 100', tannery: '毛皮 50', smokehouse: '肉 50',
     workshop: '皮革 100 · 鳞片 10', steelworks: '铁 100 · 煤 100', armoury: '钢 100 · 硫磺 50',
   };
-  if (extra[def.id]) lines.push(extra[def.id]!);
-  return lines;
-}
-function updateArrows(state: MenuState): void {
-  state.left.setAlpha(state.scrollX < -1 ? 1 : 0.28);
-  state.right.setAlpha(state.scrollX > -state.maxScroll + 1 ? 1 : 0.28);
+  return [`木材 ${def.costWood}`, ...(extra[def.id] ? [extra[def.id]!] : [])];
 }
 function applyScroll(state: MenuState, value: number): void {
   state.scrollX = Phaser.Math.Clamp(value, -state.maxScroll, 0);
   state.content.x = state.scrollX;
-  updateArrows(state);
 }
 function layoutForView(scene: BuildScene, state: MenuState): void {
   const view = scene.cameras.main.worldView;
@@ -102,30 +78,12 @@ function layoutForView(scene: BuildScene, state: MenuState): void {
   state.title.setPosition(30, 18);
   state.hint.setPosition(width - 30, 27);
   state.viewportWidth = Math.max(420, width - SIDE_PAD * 2);
-  const viewportX = SIDE_PAD;
-  state.viewport.setPosition(viewportX, VIEW_Y);
-  state.swipe.setPosition(width / 2, VIEW_Y + CARD_H / 2).setSize(Math.max(360, width - 150), CARD_H + 18);
-
-  // Geometry masks use world coordinates. Draw it exactly where the bottom bar lives.
-  state.maskShape.clear().fillStyle(0xffffff, 1).fillRect(
-    view.left + viewportX,
-    view.bottom - MENU_H + VIEW_Y,
-    state.viewportWidth,
-    CARD_H + 12,
-  );
-
+  state.viewport.setPosition(SIDE_PAD, VIEW_Y);
+  state.maskShape.clear().fillStyle(0xffffff, 1).fillRect(view.left + SIDE_PAD, view.bottom - MENU_H + VIEW_Y, state.viewportWidth, CARD_H + 12);
   const cardCount = state.content.list.length / 5;
   const contentWidth = Math.max(0, cardCount * CARD_W + Math.max(0, cardCount - 1) * GAP);
   state.maxScroll = Math.max(0, contentWidth - state.viewportWidth);
   applyScroll(state, state.scrollX);
-  state.left.setPosition(viewportX - 36, VIEW_Y + CARD_H / 2);
-  state.right.setPosition(viewportX + state.viewportWidth + 36, VIEW_Y + CARD_H / 2);
-}
-function addArrow(scene: BuildScene, label: string, onPress: () => void): Phaser.GameObjects.Container {
-  const bg = scene.add.circle(0, 0, 31, 0x344237, 0.98).setStrokeStyle(2, 0x718669, 1).setInteractive({ useHandCursor: true });
-  const text = scene.add.text(0, -2, label, { fontFamily: 'system-ui, sans-serif', fontSize: '37px', color: '#fff7df', fontStyle: 'bold' }).setOrigin(0.5);
-  bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, ev: Phaser.Types.Input.EventData) => { ev.stopPropagation(); onPress(); });
-  return scene.add.container(0, 0, [bg, text]);
 }
 function rebuildCards(scene: BuildScene, state: MenuState): void {
   const visible = BUILDINGS.filter((def) => isUnlocked(scene, def.id));
@@ -141,7 +99,7 @@ function rebuildCards(scene: BuildScene, state: MenuState): void {
     const icon = scene.add.image(x + CARD_W / 2, 82, def.texture).setDisplaySize(112, 112);
     const name = scene.add.text(x + 18, 144, def.name, {
       fontFamily: 'system-ui, sans-serif', fontSize: '28px', color: '#fff7df', fontStyle: 'bold',
-      wordWrap: { width: CARD_W - 36, useAdvancedWrap: true }, align: 'center', lineSpacing: 3,
+      wordWrap: { width: CARD_W - 36, useAdvancedWrap: true }, lineSpacing: 3,
     });
     const cost = scene.add.text(x + 18, 184, costLines(def).join('\n'), {
       fontFamily: 'system-ui, sans-serif', fontSize: '21px', color: '#d4dfc7',
@@ -155,35 +113,49 @@ function rebuildCards(scene: BuildScene, state: MenuState): void {
   state.scrollX = 0;
   layoutForView(scene, state);
 }
+function cancelBuildDrag(scene: BuildScene): void {
+  const preview = getPrivate<Phaser.GameObjects.Image | null>(scene, 'dragPreview');
+  const hover = getPrivate<Phaser.GameObjects.Graphics | null>(scene, 'hoverTile');
+  preview?.destroy(); hover?.destroy();
+  setPrivate(scene, 'dragPreview', null); setPrivate(scene, 'hoverTile', null); setPrivate(scene, 'dragDef', null);
+}
 function createMenu(scene: BuildScene): MenuState {
   const menu = scene.add.container(0, 0).setDepth(5000);
   const bg = scene.add.rectangle(0, MENU_H / 2, 1, MENU_H, 0x202821, 0.985).setInteractive();
   const topLine = scene.add.rectangle(0, 3, 1, 6, 0x627653, 1);
-  const title = scene.add.text(30, 18, '建造 · 向上拖入场景', { fontFamily: 'system-ui, sans-serif', fontSize: '32px', color: '#f2ebd8', fontStyle: 'bold' });
+  const title = scene.add.text(30, 18, '建造 · 上拖建造 / 左右滑动', { fontFamily: 'system-ui, sans-serif', fontSize: '32px', color: '#f2ebd8', fontStyle: 'bold' });
   const hint = scene.add.text(0, 27, '左右滑动查看更多', { fontFamily: 'system-ui, sans-serif', fontSize: '21px', color: '#a9b99d' }).setOrigin(1, 0);
   const viewport = scene.add.container(SIDE_PAD, VIEW_Y);
-  const content = scene.add.container(0, 0);
-  viewport.add(content);
+  const content = scene.add.container(0, 0); viewport.add(content);
   const maskShape = scene.add.graphics().setVisible(false);
-  const swipe = scene.add.rectangle(0, VIEW_Y + CARD_H / 2, 1, CARD_H + 18, 0xffffff, 0.001).setInteractive();
-  const state = {} as MenuState;
-  Object.assign(state, { menu, bg, topLine, title, hint, viewport, content, maskShape, swipe, viewportWidth: 0, scrollX: 0, maxScroll: 0, visibleIds: '', dragStartX: null, contentStartX: 0 });
-  const left = addArrow(scene, '‹', () => applyScroll(state, state.scrollX + state.viewportWidth * 0.74));
-  const right = addArrow(scene, '›', () => applyScroll(state, state.scrollX - state.viewportWidth * 0.74));
-  state.left = left; state.right = right;
-  swipe.on('pointerdown', (pointer: Phaser.Input.Pointer) => { state.dragStartX = pointer.x; state.contentStartX = state.scrollX; });
-  swipe.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-    if (!pointer.isDown || state.dragStartX == null) return;
-    const dx = (pointer.x - state.dragStartX) / Math.max(0.001, scene.cameras.main.zoom);
-    applyScroll(state, state.contentStartX + dx);
-  });
-  const clearSwipe = () => { state.dragStartX = null; };
-  swipe.on('pointerup', clearSwipe); swipe.on('pointerout', clearSwipe);
-  menu.add([bg, topLine, title, hint, swipe, viewport, left, right]);
+  const state: MenuState = { menu, bg, topLine, title, hint, viewport, content, maskShape, viewportWidth: 0, scrollX: 0, maxScroll: 0, visibleIds: '', pointerId: null, startX: 0, startY: 0, contentStartX: 0, swiping: false };
+  menu.add([bg, topLine, title, hint, viewport]);
   viewport.setMask(maskShape.createGeometryMask());
   setPrivate(scene, 'menu', menu);
-  rebuildCards(scene, state);
-  layoutForView(scene, state);
+
+  scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+    const wp = scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const view = scene.cameras.main.worldView;
+    if (wp.y < view.bottom - MENU_H) return;
+    state.pointerId = pointer.id; state.startX = pointer.x; state.startY = pointer.y; state.contentStartX = state.scrollX; state.swiping = false;
+  });
+  scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+    if (!pointer.isDown || state.pointerId !== pointer.id) return;
+    const dx = pointer.x - state.startX;
+    const dy = pointer.y - state.startY;
+    if (!state.swiping && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+      state.swiping = true;
+      cancelBuildDrag(scene);
+    }
+    if (state.swiping) {
+      applyScroll(state, state.contentStartX + dx / Math.max(0.001, scene.cameras.main.zoom));
+    }
+  });
+  const clear = (pointer: Phaser.Input.Pointer) => { if (state.pointerId === pointer.id) { state.pointerId = null; state.swiping = false; } };
+  scene.input.on('pointerup', clear);
+  scene.input.on('pointerupoutside', clear);
+
+  rebuildCards(scene, state); layoutForView(scene, state);
   return state;
 }
 
@@ -195,15 +167,13 @@ export function installBuildMenuPatch(): void {
   const originalUpdate = proto.update;
   proto.update = function patchedUpdate(this: BuildScene, ...args: any[]) {
     const result = originalUpdate.apply(this, args);
-    const state = stateMap.get(this);
-    if (state) { rebuildCards(this, state); layoutForView(this, state); }
+    const state = stateMap.get(this); if (state) { rebuildCards(this, state); layoutForView(this, state); }
     return result;
   };
   const originalPlaceBuilding = proto.placeBuilding;
   proto.placeBuilding = function patchedPlaceBuilding(this: BuildScene, ...args: any[]) {
     const result = originalPlaceBuilding.apply(this, args);
-    const state = stateMap.get(this);
-    if (state) rebuildCards(this, state);
+    const state = stateMap.get(this); if (state) rebuildCards(this, state);
     return result;
   };
 }
