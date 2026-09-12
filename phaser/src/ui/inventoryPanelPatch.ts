@@ -3,7 +3,6 @@ import { BuildScene } from '../scenes/BuildScene';
 
 type AnyFn = (...args: any[]) => any;
 type InventoryState = {
-  button: Phaser.GameObjects.Container;
   panel: Phaser.GameObjects.Container;
   shade: Phaser.GameObjects.Rectangle;
   listText: Phaser.GameObjects.Text;
@@ -21,6 +20,9 @@ const ITEMS: Array<{ id: string; name: string; group: string }> = [
 
 function getPrivate<T>(scene: BuildScene, key: string): T | undefined {
   return (scene as unknown as Record<string, unknown>)[key] as T | undefined;
+}
+function setPrivate(scene: BuildScene, key: string, value: unknown): void {
+  (scene as unknown as Record<string, unknown>)[key] = value;
 }
 function crafted(scene: BuildScene): Record<string, number> {
   return getPrivate<Record<string, number>>(scene, 'craftedItems') ?? {};
@@ -44,15 +46,17 @@ function refresh(scene: BuildScene, state: InventoryState): void {
 }
 function layout(scene: BuildScene, state: InventoryState): void {
   const view = scene.cameras.main.worldView;
-  state.button.setPosition(view.right - 112, view.centerY - 25);
   state.panel.setPosition(view.centerX, view.centerY);
   state.shade.setPosition(0, 0).setSize(view.width + 12, view.height + 12);
 }
+function setOpen(scene: BuildScene, open: boolean): void {
+  const state = states.get(scene);
+  if (!state) return;
+  state.open = open;
+  state.panel.setVisible(open);
+  if (open) refresh(scene, state);
+}
 function createUi(scene: BuildScene): InventoryState {
-  const buttonBg = scene.add.rectangle(0, 0, 196, 64, 0x3d4c40, 0.98).setStrokeStyle(2, 0x899a7e, 1).setInteractive({ useHandCursor: true });
-  const buttonText = scene.add.text(0, 0, '背包', { fontFamily: 'system-ui, sans-serif', fontSize: '22px', color: '#fff1d7', fontStyle: 'bold' }).setOrigin(0.5);
-  const button = scene.add.container(0, 0, [buttonBg, buttonText]).setDepth(9840);
-
   const panel = scene.add.container(0, 0).setDepth(11900).setVisible(false);
   const shade = scene.add.rectangle(0, 0, 1, 1, 0x111511, 0.72).setInteractive();
   const bg = scene.add.rectangle(0, 0, 780, 1160, 0x202820, 0.995).setStrokeStyle(3, 0x819173, 1).setInteractive();
@@ -63,10 +67,12 @@ function createUi(scene: BuildScene): InventoryState {
   const closeText = scene.add.text(325, -511, '×', { fontSize: '34px', color: '#ffffff' }).setOrigin(0.5);
   panel.add([shade, bg, title, sub, listText, closeBg, closeText]);
 
-  const state: InventoryState = { button, panel, shade, listText, open: false };
-  const setOpen = (open: boolean) => { state.open = open; panel.setVisible(open); if (open) refresh(scene, state); };
-  buttonBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); setOpen(!state.open); });
-  closeBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); setOpen(false); });
+  const state: InventoryState = { panel, shade, listText, open: false };
+  states.set(scene, state);
+  setPrivate(scene, 'openInventoryPanel', () => setOpen(scene, true));
+  setPrivate(scene, 'closeInventoryPanel', () => setOpen(scene, false));
+
+  closeBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); setOpen(scene, false); });
   shade.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation());
   bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation());
   refresh(scene, state);
@@ -82,7 +88,7 @@ export function installInventoryPanelPatch(): void {
   const originalUpdate = proto.update;
   proto.create = function patchedCreate(this: BuildScene, ...args: any[]) {
     const result = originalCreate.apply(this, args);
-    states.set(this, createUi(this));
+    createUi(this);
     return result;
   };
   proto.update = function patchedUpdate(this: BuildScene, ...args: any[]) {
