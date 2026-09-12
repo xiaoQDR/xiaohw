@@ -31,11 +31,12 @@ type MenuState = {
 };
 
 const DESIGN_W = 1080;
-const MENU_H = 270;
-const CARD_W = 235;
-const CARD_H = 176;
-const GAP = 16;
-const SIDE_PAD = 76;
+const MENU_H = 430;
+const CARD_W = 252;
+const CARD_H = 270;
+const GAP = 18;
+const SIDE_PAD = 78;
+const VIEW_Y = 92;
 
 const BUILDINGS: BuildingDef[] = [
   { id: 'trap', name: '陷阱', texture: 'building-trap', footprint: [1, 1], costWood: 10, displaySize: [180, 180] },
@@ -80,21 +81,21 @@ function isUnlocked(scene: BuildScene, id: BuildingId): boolean {
 function costLines(def: BuildingDef): string[] {
   const lines = [`木材 ${def.costWood}`];
   const extra: Partial<Record<BuildingId, string>> = {
-    lodge: '毛皮10 · 肉5',
-    tradingPost: '毛皮100',
-    tannery: '毛皮50',
-    smokehouse: '肉50',
-    workshop: '皮革100 · 鳞片10',
-    steelworks: '铁100 · 煤100',
-    armoury: '钢100 · 硫磺50',
+    lodge: '毛皮 10 · 肉 5',
+    tradingPost: '毛皮 100',
+    tannery: '毛皮 50',
+    smokehouse: '肉 50',
+    workshop: '皮革 100 · 鳞片 10',
+    steelworks: '铁 100 · 煤 100',
+    armoury: '钢 100 · 硫磺 50',
   };
   if (extra[def.id]) lines.push(extra[def.id]!);
   return lines;
 }
 
 function updateArrows(state: MenuState): void {
-  state.left.setAlpha(state.scrollX < -1 ? 1 : 0.3);
-  state.right.setAlpha(state.scrollX > -state.maxScroll + 1 ? 1 : 0.3);
+  state.left.setAlpha(state.scrollX < -1 ? 1 : 0.28);
+  state.right.setAlpha(state.scrollX > -state.maxScroll + 1 ? 1 : 0.28);
 }
 
 function applyScroll(state: MenuState, value: number): void {
@@ -105,31 +106,34 @@ function applyScroll(state: MenuState, value: number): void {
 
 function layoutForView(scene: BuildScene, state: MenuState): void {
   const view = scene.cameras.main.worldView;
-  const width = Math.min(DESIGN_W - 32, Math.max(720, view.width - 36));
-  state.viewportWidth = width - SIDE_PAD * 2;
+  const safeWidth = Math.min(DESIGN_W - 28, Math.max(680, view.width - 34));
+  state.viewportWidth = safeWidth - SIDE_PAD * 2;
+  const viewportX = DESIGN_W / 2 - state.viewportWidth / 2;
+  state.viewport.setPosition(viewportX, VIEW_Y);
+
   state.maskShape.clear().fillStyle(0xffffff, 1).fillRect(
-    DESIGN_W / 2 - state.viewportWidth / 2,
-    62,
+    viewportX,
+    VIEW_Y,
     state.viewportWidth,
-    CARD_H + 18,
+    CARD_H + 10,
   );
-  const mask = state.maskShape.createGeometryMask();
-  state.viewport.setMask(mask);
-  const cards = state.content.list.length;
+  state.viewport.setMask(state.maskShape.createGeometryMask());
+
+  const cards = state.content.list.length / 5;
   const contentWidth = Math.max(0, cards * state.cardWidth + Math.max(0, cards - 1) * state.gap);
   state.maxScroll = Math.max(0, contentWidth - state.viewportWidth);
   applyScroll(state, state.scrollX);
 
-  state.left.setPosition(DESIGN_W / 2 - state.viewportWidth / 2 - 34, 154);
-  state.right.setPosition(DESIGN_W / 2 + state.viewportWidth / 2 + 34, 154);
+  state.left.setPosition(viewportX - 36, VIEW_Y + CARD_H / 2);
+  state.right.setPosition(viewportX + state.viewportWidth + 36, VIEW_Y + CARD_H / 2);
 }
 
 function addArrow(scene: BuildScene, label: string, onPress: () => void): Phaser.GameObjects.Container {
-  const bg = scene.add.circle(0, 0, 30, 0x344237, 0.98)
+  const bg = scene.add.circle(0, 0, 31, 0x344237, 0.98)
     .setStrokeStyle(2, 0x718669, 1)
     .setInteractive({ useHandCursor: true });
   const text = scene.add.text(0, -2, label, {
-    fontFamily: 'system-ui, sans-serif', fontSize: '35px', color: '#fff7df', fontStyle: 'bold',
+    fontFamily: 'system-ui, sans-serif', fontSize: '37px', color: '#fff7df', fontStyle: 'bold',
   }).setOrigin(0.5);
   bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, ev: Phaser.Types.Input.EventData) => {
     ev.stopPropagation();
@@ -152,20 +156,20 @@ function rebuildCards(scene: BuildScene, state: MenuState): void {
       .setInteractive({ draggable: true, useHandCursor: true });
     card.setData('buildingDef', def);
 
-    const icon = scene.add.image(x + 56, 82, def.texture).setDisplaySize(92, 92);
-    const name = scene.add.text(x + 112, 18, def.name, {
-      fontFamily: 'system-ui, sans-serif', fontSize: '25px', color: '#fff7df', fontStyle: 'bold',
-      wordWrap: { width: 112, useAdvancedWrap: true },
-      lineSpacing: 3,
-    });
-    const cost = scene.add.text(x + 112, 56, costLines(def).join('\n'), {
-      fontFamily: 'system-ui, sans-serif', fontSize: '19px', color: '#d4dfc7',
-      wordWrap: { width: 112, useAdvancedWrap: true },
+    const icon = scene.add.image(x + CARD_W / 2, 82, def.texture).setDisplaySize(112, 112);
+    const name = scene.add.text(x + 18, 144, def.name, {
+      fontFamily: 'system-ui, sans-serif', fontSize: '28px', color: '#fff7df', fontStyle: 'bold',
+      wordWrap: { width: CARD_W - 36, useAdvancedWrap: true },
+      align: 'center', lineSpacing: 3,
+    }).setOrigin(0, 0);
+    const cost = scene.add.text(x + 18, 184, costLines(def).join('\n'), {
+      fontFamily: 'system-ui, sans-serif', fontSize: '21px', color: '#d4dfc7',
+      wordWrap: { width: CARD_W - 36, useAdvancedWrap: true },
       lineSpacing: 4,
     });
-    const footprint = scene.add.text(x + 112, 128, `${def.footprint[0]}×${def.footprint[1]}`, {
-      fontFamily: 'system-ui, sans-serif', fontSize: '18px', color: '#9fba8e',
-    });
+    const footprint = scene.add.text(x + CARD_W - 18, CARD_H - 18, `${def.footprint[0]}×${def.footprint[1]}`, {
+      fontFamily: 'system-ui, sans-serif', fontSize: '20px', color: '#9fba8e', fontStyle: 'bold',
+    }).setOrigin(1, 1);
     state.content.add([card, icon, name, cost, footprint]);
   });
 
@@ -177,14 +181,14 @@ function createMenu(scene: BuildScene): MenuState {
   const menu = scene.add.container(0, 0).setDepth(5000);
   const bg = scene.add.rectangle(DESIGN_W / 2, MENU_H / 2, DESIGN_W, MENU_H, 0x202821, 0.985).setInteractive();
   const topLine = scene.add.rectangle(DESIGN_W / 2, 3, DESIGN_W, 6, 0x627653, 1);
-  const title = scene.add.text(34, 17, '建造 · 向上拖入场景', {
-    fontFamily: 'system-ui, sans-serif', fontSize: '30px', color: '#f2ebd8', fontStyle: 'bold',
+  const title = scene.add.text(34, 18, '建造 · 向上拖入场景', {
+    fontFamily: 'system-ui, sans-serif', fontSize: '32px', color: '#f2ebd8', fontStyle: 'bold',
   });
-  const hint = scene.add.text(DESIGN_W - 34, 22, '左右滑动查看更多', {
-    fontFamily: 'system-ui, sans-serif', fontSize: '20px', color: '#a9b99d',
+  const hint = scene.add.text(DESIGN_W - 34, 27, '左右滑动查看更多', {
+    fontFamily: 'system-ui, sans-serif', fontSize: '21px', color: '#a9b99d',
   }).setOrigin(1, 0);
 
-  const viewport = scene.add.container(DESIGN_W / 2 - (DESIGN_W - SIDE_PAD * 2) / 2, 68);
+  const viewport = scene.add.container(0, VIEW_Y);
   const content = scene.add.container(0, 0);
   viewport.add(content);
   const maskShape = scene.add.graphics().setVisible(false);
@@ -203,12 +207,12 @@ function createMenu(scene: BuildScene): MenuState {
   state.dragStartX = null;
   state.contentStartX = 0;
 
-  const left = addArrow(scene, '‹', () => applyScroll(state, state.scrollX + state.viewportWidth * 0.72));
-  const right = addArrow(scene, '›', () => applyScroll(state, state.scrollX - state.viewportWidth * 0.72));
+  const left = addArrow(scene, '‹', () => applyScroll(state, state.scrollX + state.viewportWidth * 0.74));
+  const right = addArrow(scene, '›', () => applyScroll(state, state.scrollX - state.viewportWidth * 0.74));
   state.left = left;
   state.right = right;
 
-  const swipe = scene.add.rectangle(DESIGN_W / 2, 154, DESIGN_W - 150, 194, 0xffffff, 0.001)
+  const swipe = scene.add.rectangle(DESIGN_W / 2, VIEW_Y + CARD_H / 2, DESIGN_W - 150, CARD_H + 18, 0xffffff, 0.001)
     .setInteractive();
   swipe.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
     state.dragStartX = pointer.x;
@@ -223,7 +227,8 @@ function createMenu(scene: BuildScene): MenuState {
   swipe.on('pointerup', clearSwipe);
   swipe.on('pointerout', clearSwipe);
 
-  menu.add([bg, topLine, title, hint, viewport, left, right, swipe]);
+  // Swipe layer sits below cards so cards still receive upward drag-to-build gestures.
+  menu.add([bg, topLine, title, hint, swipe, viewport, left, right]);
   setPrivate(scene, 'menu', menu);
   rebuildCards(scene, state);
   layoutForView(scene, state);
