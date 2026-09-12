@@ -26,6 +26,8 @@ import { installWorkerMovementSpeedPatch } from './ui/workerMovementSpeedPatch';
 import { installBottomNavPatch } from './ui/bottomNavPatch';
 import { installExpeditionCombatDepthPatch } from './ui/expeditionCombatDepthPatch';
 import { installStarshipProgressionPatch } from './ui/starshipProgressionPatch';
+import { installExpeditionMineProgressPatch } from './ui/expeditionMineProgressPatch';
+import { installMineWorkerPatch } from './ui/mineWorkerPatch';
 
 installWorldExpansionPatch();
 installExpeditionCampPatch();
@@ -50,6 +52,8 @@ installWorkerMovementSpeedPatch();
 installBottomNavPatch();
 installExpeditionCombatDepthPatch();
 installStarshipProgressionPatch();
+installExpeditionMineProgressPatch();
+installMineWorkerPatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
