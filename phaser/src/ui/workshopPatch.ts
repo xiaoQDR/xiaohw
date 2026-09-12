@@ -85,13 +85,13 @@ function createPanel(scene: BuildScene): CraftState {
     const owned = scene.add.text(x + 72, y - 37, '', { fontFamily: 'system-ui, sans-serif', fontSize: '14px', color: '#9fc48e' });
     const button = scene.add.rectangle(x + 145, y + 25, 82, 38, 0x526d4f, 1).setStrokeStyle(1, 0x819276, 1).setInteractive({ useHandCursor: true });
     const buttonText = scene.add.text(x + 145, y + 24, '制作', { fontFamily: 'system-ui, sans-serif', fontSize: '16px', color: '#fff2ce', fontStyle: 'bold' }).setOrigin(0.5);
-    button.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); doCraft(scene, craft); const s = states.get(scene); if (s) refreshPanel(scene, s); });
+    button.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); doCraft(scene, craft); const s = states.get(scene); if (s) refreshPanel(scene, s); });
     panel.add([card, name, desc, cost, owned, button, buttonText]);
     rows.push({ id: craft.id, owned, cost, button, buttonText });
   });
   const state: CraftState = { panel, open: false, rows };
-  close.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); state.open = false; panel.setVisible(false); });
-  bg.on('pointerdown', (_p, _x, _y, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+  close.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); state.open = false; panel.setVisible(false); });
+  bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
   positionPanel(scene, state);
   return state;
 }
