@@ -31,6 +31,7 @@ const JOBS: JobDef[] = [
   { id: 'charcutier', name: '熏肉师', description: '把肉加工成熏肉', requires: 'smokehouse', requiresName: '熏肉房' },
 ];
 
+const JOB_IDS = JOBS.map((job) => job.id);
 const states = new WeakMap<BuildScene, JobState>();
 
 function hasBuilding(scene: BuildScene, id?: BuildingId): boolean {
@@ -58,29 +59,63 @@ function refresh(scene: BuildScene, state: JobState): void {
   }
 }
 
+function setWorkerJob(
+  scene: BuildScene,
+  worker: Phaser.GameObjects.Image,
+  nextJob: JobId,
+  anyScene: { startWorkerLoop?: (worker: Phaser.GameObjects.Image, delay?: number) => void },
+): void {
+  const previous = (worker.getData('job') as JobId | undefined) ?? 'gatherer';
+  if (previous === nextJob) return;
+
+  const version = Number(worker.getData('jobVersion') ?? 0) + 1;
+  worker.setData('jobVersion', version);
+  worker.setData('job', nextJob);
+  worker.setData('workPhase', 'switching');
+
+  // Only the worker whose job actually changed is interrupted.
+  scene.tweens.killTweensOf(worker);
+
+  if (nextJob === 'gatherer') {
+    worker.clearTint();
+    anyScene.startWorkerLoop?.(worker, Phaser.Math.Between(120, 380));
+  }
+}
+
 function applyWorkerJobs(scene: BuildScene, state: JobState): void {
   const anyScene = scene as unknown as {
     workers?: Phaser.GameObjects.Image[];
     startWorkerLoop?: (worker: Phaser.GameObjects.Image, delay?: number) => void;
   };
-  const workers = anyScene.workers ?? [];
-  const assignment: JobId[] = [];
-  for (const job of JOBS) {
-    for (let i = 0; i < state.counts[job.id]; i += 1) assignment.push(job.id);
+  const workers = (anyScene.workers ?? []).filter((worker) => worker.active);
+  const remaining: Record<JobId, number> = { ...state.counts };
+  const keep = new Set<Phaser.GameObjects.Image>();
+
+  // First pass: preserve existing assignments whenever they still fit the target counts.
+  for (const worker of workers) {
+    const current = ((worker.getData('job') as JobId | undefined) ?? 'gatherer');
+    if (remaining[current] > 0) {
+      remaining[current] -= 1;
+      keep.add(worker);
+    }
   }
 
-  workers.forEach((worker, index) => {
-    const nextJob = assignment[index] ?? 'gatherer';
-    const previous = (worker.getData('job') as JobId | undefined) ?? 'gatherer';
-    worker.setData('job', nextJob);
-    if (nextJob === 'gatherer') {
-      worker.clearTint();
-      if (previous !== 'gatherer') anyScene.startWorkerLoop?.(worker, Phaser.Math.Between(150, 550));
-    } else {
-      worker.setTint(0xc4c1b2);
-      scene.tweens.killTweensOf(worker);
-    }
+  // Build only the missing slots. This prevents mass reassignment on every +/- click.
+  const missing: JobId[] = [];
+  for (const jobId of JOB_IDS) {
+    for (let i = 0; i < remaining[jobId]; i += 1) missing.push(jobId);
+  }
+
+  const movable = workers.filter((worker) => !keep.has(worker));
+  movable.forEach((worker, index) => {
+    setWorkerJob(scene, worker, missing[index] ?? 'gatherer', anyScene);
   });
+
+  // Initialize workers that never had a job/version without interrupting their current gather loop.
+  for (const worker of workers) {
+    if (!worker.getData('job')) worker.setData('job', 'gatherer');
+    if (worker.getData('jobVersion') == null) worker.setData('jobVersion', 0);
+  }
 }
 
 function adjust(scene: BuildScene, state: JobState, job: JobDef, delta: number): void {
