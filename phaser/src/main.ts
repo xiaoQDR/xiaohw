@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import './style.css';
 import { BuildScene } from './scenes/BuildScene';
+import { ExpeditionScene } from './scenes/ExpeditionScene';
 import { installWorldExpansionPatch } from './ui/worldExpansionPatch';
 import { installExpeditionCampPatch } from './ui/expeditionCampPatch';
 import { installInventoryPanelPatch } from './ui/inventoryPanelPatch';
@@ -54,5 +55,5 @@ new Phaser.Game({
     width: window.innerWidth,
     height: window.innerHeight,
   },
-  scene: [BuildScene],
+  scene: [BuildScene, ExpeditionScene],
 });
