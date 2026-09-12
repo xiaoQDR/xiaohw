@@ -134,9 +134,9 @@ function createUi(scene: BuildScene): JobState {
   });
   state.panel.add(children).setVisible(false);
   const toggle = (open?: boolean) => { state.open = open ?? !state.open; state.panel.setVisible(state.open); refresh(scene, state); };
-  buttonBg.on('pointerdown', (_p, _x, _y, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); toggle(); });
-  closeBg.on('pointerdown', (_p, _x, _y, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); toggle(false); });
-  panelBg.on('pointerdown', (_p, _x, _y, e: Phaser.Types.Input.EventData) => e.stopPropagation());
+  buttonBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); toggle(); });
+  closeBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { e.stopPropagation(); toggle(false); });
+  panelBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => e.stopPropagation());
   positionUi(scene, state); refresh(scene, state); return state;
 }
 
