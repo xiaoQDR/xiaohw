@@ -7,6 +7,7 @@ import { installEventSystemPatch } from './ui/eventSystemPatch';
 import { installOriginalBalancePatch } from './ui/originalBalancePatch';
 import { installDynamicBuildCostPatch } from './ui/dynamicBuildCostPatch';
 import { installTestTimeScalePatch } from './ui/testTimeScalePatch';
+import { installHunterWorkPatch } from './ui/hunterWorkPatch';
 
 installJobPanelPatch();
 installTrapSystemPatch();
@@ -14,6 +15,7 @@ installEventSystemPatch();
 installOriginalBalancePatch();
 installDynamicBuildCostPatch();
 installTestTimeScalePatch();
+installHunterWorkPatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
