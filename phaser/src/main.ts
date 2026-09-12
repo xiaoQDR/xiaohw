@@ -32,6 +32,8 @@ import { installExpeditionWorldPersistencePatch } from './ui/expeditionWorldPers
 import { installExpeditionOutpostPatch } from './ui/expeditionOutpostPatch';
 import { installExpeditionResponsivePatch } from './ui/expeditionResponsivePatch';
 import { installExpeditionMovementFixPatch } from './ui/expeditionMovementFixPatch';
+import { installWarshipPostgamePatch } from './ui/warshipPostgamePatch';
+import { installFabricatorPatch } from './ui/fabricatorPatch';
 import { installSaveGamePatch } from './ui/saveGamePatch';
 import { installEndgameDebugPatch } from './ui/endgameDebugPatch';
 
@@ -63,7 +65,9 @@ installExpeditionWorldPersistencePatch();
 installExpeditionOutpostPatch();
 installExpeditionResponsivePatch();
 installExpeditionMovementFixPatch();
+installWarshipPostgamePatch();
 installMineWorkerPatch();
+installFabricatorPatch();
 installSaveGamePatch();
 installEndgameDebugPatch();
 
