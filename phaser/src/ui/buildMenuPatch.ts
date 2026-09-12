@@ -88,39 +88,46 @@ function layoutForView(scene: BuildScene, state: MenuState): void {
   state.viewportWidth = Math.max(420, width - SIDE_PAD * 2);
   state.viewport.setPosition(SIDE_PAD, VIEW_Y);
   state.maskShape.clear().fillStyle(0xffffff, 1).fillRect(view.left + SIDE_PAD, view.bottom - MENU_H + VIEW_Y, state.viewportWidth, CARD_H + 12);
-  const cardCount = state.content.list.length / 5;
+  const cardCount = state.content.list.length / 6;
   const contentWidth = Math.max(0, cardCount * CARD_W + Math.max(0, cardCount - 1) * GAP);
   state.maxScroll = Math.max(0, contentWidth - state.viewportWidth);
   applyScroll(state, state.scrollX);
 }
 function rebuildCards(scene: BuildScene, state: MenuState, force = false): void {
-  const visible = BUILDINGS.filter((def) => isUnlocked(scene, def.id) && hasCapacity(scene, def.id));
-  const signature = visible.map((d) => d.id).join('|');
+  const visible = BUILDINGS.filter((def) => isUnlocked(scene, def.id));
+  const signature = visible.map((d) => `${d.id}:${hasCapacity(scene, d.id) ? 'open' : 'capped'}`).join('|');
   if (!force && signature === state.visibleIds) return;
   state.visibleIds = signature;
   state.content.removeAll(true);
   visible.forEach((def, index) => {
+    const capped = !hasCapacity(scene, def.id);
     const x = index * (CARD_W + GAP);
-    const card = scene.add.rectangle(x + CARD_W / 2, CARD_H / 2, CARD_W, CARD_H, 0x354237, 1)
-      .setStrokeStyle(2, 0x718669, 1)
-      .setInteractive({ useHandCursor: true });
-    scene.input.setDraggable(card, true);
-    card.setData('buildingDef', def);
-    const icon = scene.add.image(x + CARD_W / 2, 82, def.texture).setDisplaySize(112, 112);
+    const card = scene.add.rectangle(x + CARD_W / 2, CARD_H / 2, CARD_W, CARD_H, capped ? 0x2b332c : 0x354237, 1)
+      .setStrokeStyle(2, capped ? 0x596157 : 0x718669, 1)
+      .setInteractive({ useHandCursor: !capped });
+    if (!capped) {
+      scene.input.setDraggable(card, true);
+      card.setData('buildingDef', def);
+    }
+
+    const icon = scene.add.image(x + CARD_W / 2, 82, def.texture).setDisplaySize(112, 112).setAlpha(capped ? 0.45 : 1);
     const name = scene.add.text(x + 18, 144, def.name, {
-      fontFamily: 'system-ui, sans-serif', fontSize: '28px', color: '#fff7df', fontStyle: 'bold',
+      fontFamily: 'system-ui, sans-serif', fontSize: '28px', color: capped ? '#9da59a' : '#fff7df', fontStyle: 'bold',
       wordWrap: { width: CARD_W - 36, useAdvancedWrap: true }, lineSpacing: 3,
     });
-    const cost = scene.add.text(x + 18, 184, costLines(def).join('\n'), {
-      fontFamily: 'system-ui, sans-serif', fontSize: '21px', color: '#d4dfc7',
-      wordWrap: { width: CARD_W - 36, useAdvancedWrap: true }, lineSpacing: 4,
+    const cost = scene.add.text(x + 18, 184, capped ? '上限已到达' : costLines(def).join('\n'), {
+      fontFamily: 'system-ui, sans-serif', fontSize: capped ? '23px' : '21px', color: capped ? '#d0a184' : '#d4dfc7',
+      fontStyle: capped ? 'bold' : 'normal', wordWrap: { width: CARD_W - 36, useAdvancedWrap: true }, lineSpacing: 4,
     });
-    const footprint = scene.add.text(x + CARD_W - 18, CARD_H - 18, `${def.footprint[0]}×${def.footprint[1]}`, {
-      fontFamily: 'system-ui, sans-serif', fontSize: '20px', color: '#9fba8e', fontStyle: 'bold',
+    const footprint = scene.add.text(x + CARD_W - 18, CARD_H - 18, `${buildingCount(scene, def.id)}/${MAX_COUNTS[def.id]}`, {
+      fontFamily: 'system-ui, sans-serif', fontSize: '20px', color: capped ? '#8b9488' : '#9fba8e', fontStyle: 'bold',
     }).setOrigin(1, 1);
-    state.content.add([card, icon, name, cost, footprint]);
+    const status = scene.add.text(x + 18, CARD_H - 20, capped ? '不可继续建造' : `${def.footprint[0]}×${def.footprint[1]}`, {
+      fontFamily: 'system-ui, sans-serif', fontSize: '18px', color: capped ? '#8b9488' : '#9fba8e',
+    }).setOrigin(0, 1);
+    state.content.add([card, icon, name, cost, footprint, status]);
   });
-  state.scrollX = 0;
+  state.scrollX = Phaser.Math.Clamp(state.scrollX, -state.maxScroll, 0);
   layoutForView(scene, state);
 }
 function cancelBuildDrag(scene: BuildScene): void {
