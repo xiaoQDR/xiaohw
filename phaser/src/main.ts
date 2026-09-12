@@ -3,6 +3,7 @@ import './style.css';
 import { BuildScene } from './scenes/BuildScene';
 import { installWorldExpansionPatch } from './ui/worldExpansionPatch';
 import { installExpeditionCampPatch } from './ui/expeditionCampPatch';
+import { installInventoryPanelPatch } from './ui/inventoryPanelPatch';
 import { installBuildMenuPatch } from './ui/buildMenuPatch';
 import { installResponsiveChromePatch } from './ui/responsiveChromePatch';
 import { installJobAppearancePatch } from './ui/jobAppearancePatch';
@@ -23,6 +24,7 @@ import { installWorkerMovementSpeedPatch } from './ui/workerMovementSpeedPatch';
 
 installWorldExpansionPatch();
 installExpeditionCampPatch();
+installInventoryPanelPatch();
 installBuildMenuPatch();
 installResponsiveChromePatch();
 installJobAppearancePatch();
