@@ -28,6 +28,7 @@ import { installExpeditionCombatDepthPatch } from './ui/expeditionCombatDepthPat
 import { installStarshipProgressionPatch } from './ui/starshipProgressionPatch';
 import { installExpeditionMineProgressPatch } from './ui/expeditionMineProgressPatch';
 import { installMineWorkerPatch } from './ui/mineWorkerPatch';
+import { installExpeditionWorldPersistencePatch } from './ui/expeditionWorldPersistencePatch';
 import { installExpeditionOutpostPatch } from './ui/expeditionOutpostPatch';
 import { installExpeditionResponsivePatch } from './ui/expeditionResponsivePatch';
 import { installExpeditionMovementFixPatch } from './ui/expeditionMovementFixPatch';
@@ -57,6 +58,7 @@ installBottomNavPatch();
 installExpeditionCombatDepthPatch();
 installStarshipProgressionPatch();
 installExpeditionMineProgressPatch();
+installExpeditionWorldPersistencePatch();
 installExpeditionOutpostPatch();
 installExpeditionResponsivePatch();
 installExpeditionMovementFixPatch();
