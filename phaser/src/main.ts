@@ -3,6 +3,7 @@ import './style.css';
 import { BuildScene } from './scenes/BuildScene';
 import { installWorldExpansionPatch } from './ui/worldExpansionPatch';
 import { installBuildMenuPatch } from './ui/buildMenuPatch';
+import { installResponsiveChromePatch } from './ui/responsiveChromePatch';
 import { installJobAppearancePatch } from './ui/jobAppearancePatch';
 import { installJobPanelPatch } from './ui/jobPanelPatch';
 import { installTrapSystemPatch } from './ui/trapSystemPatch';
@@ -21,6 +22,7 @@ import { installWorkerMovementSpeedPatch } from './ui/workerMovementSpeedPatch';
 
 installWorldExpansionPatch();
 installBuildMenuPatch();
+installResponsiveChromePatch();
 installJobAppearancePatch();
 installJobPanelPatch();
 installTrapSystemPatch();
