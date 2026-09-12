@@ -24,6 +24,10 @@ function getPrivate<T>(scene: BuildScene, key: string): T | undefined { return (
 function setPrivate(scene: BuildScene, key: string, value: unknown): void { (scene as unknown as Record<string, unknown>)[key] = value; }
 function getResource(scene: BuildScene, key: ResourceKey): number { return Number(getPrivate<number>(scene, key) ?? 0); }
 function refreshBuildMenu(scene: BuildScene): void { getPrivate<() => void>(scene, 'refreshBuildMenuNow')?.(); }
+function refreshLinkedPanels(scene: BuildScene): void {
+  getPrivate<() => void>(scene, 'refreshExpeditionInventory')?.();
+  getPrivate<() => void>(scene, 'refreshInventoryPanel')?.();
+}
 function setResource(scene: BuildScene, key: ResourceKey, value: number): void {
   setPrivate(scene, key, Math.max(0, Number.isFinite(value) ? value : 0));
   (scene as unknown as { refreshResources?: () => void }).refreshResources?.call(scene);
@@ -51,6 +55,23 @@ function openNumericEditor(scene: BuildScene, state: DebugState, key: ResourceKe
   }
   setResource(scene, key, parsed);
   refreshPanel(scene, state);
+}
+function addCombatTestLoadout(scene: BuildScene, state: DebugState): void {
+  setResource(scene, 'curedMeat', getResource(scene, 'curedMeat') + 100);
+  setResource(scene, 'medicine', getResource(scene, 'medicine') + 30);
+  setResource(scene, 'bullets', getResource(scene, 'bullets') + 200);
+
+  let craftedItems = getPrivate<Record<string, number>>(scene, 'craftedItems');
+  if (!craftedItems) {
+    craftedItems = {};
+    setPrivate(scene, 'craftedItems', craftedItems);
+  }
+  const testGear = ['waterTank', 'convoy', 'sArmour', 'rifle', 'steelSword'];
+  for (const id of testGear) craftedItems[id] = Math.max(1, Number(craftedItems[id] ?? 0));
+
+  refreshLinkedPanels(scene);
+  refreshPanel(scene, state);
+  (scene as unknown as { showToast?: (message: string) => void }).showToast?.('已补齐远征战斗测试装备与补给');
 }
 function createUi(scene: BuildScene): DebugState {
   const buttonBg = scene.add.rectangle(0, 0, 196, 64, 0x38443a, 0.98).setStrokeStyle(2, 0x829276, 1).setInteractive({ useHandCursor: true });
@@ -90,6 +111,10 @@ function createUi(scene: BuildScene): DebugState {
     panel.add([rowBg, name, valueBg, value, plus, plusText]);
   });
 
+  const combatBg = scene.add.rectangle(0, 610, 760, 64, 0x6a553c, 1).setStrokeStyle(2, 0xa98a61, 1).setInteractive({ useHandCursor: true });
+  const combatText = scene.add.text(0, 610, '一键远征战斗测试', { fontFamily: 'system-ui, sans-serif', fontSize: '22px', color: '#fff0cf', fontStyle: 'bold' }).setOrigin(0.5);
+  panel.add([combatBg, combatText]);
+
   const setOpen = (open: boolean) => { state.open = open; panel.setVisible(open); if (open) refreshPanel(scene, state); };
   buttonBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); setOpen(!state.open); });
   closeBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); setOpen(false); });
@@ -98,6 +123,10 @@ function createUi(scene: BuildScene): DebugState {
     const speed = cycleSpeed(scene);
     refreshPanel(scene, state);
     (scene as unknown as { showToast?: (message: string) => void }).showToast?.(`测试时间速度：×${speed}`);
+  });
+  combatBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+    event.stopPropagation();
+    addCombatTestLoadout(scene, state);
   });
   shade.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
   bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
