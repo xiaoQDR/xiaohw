@@ -14,6 +14,7 @@ import { installExplorerWorkPatch } from './ui/explorerWorkPatch';
 import { installDebugResourcePatch } from './ui/debugResourcePatch';
 import { installTradingPostPatch } from './ui/tradingPostPatch';
 import { installBuildingWorkerPatch } from './ui/buildingWorkerPatch';
+import { installWorkshopPatch } from './ui/workshopPatch';
 import { installWorkerIdentityPatch } from './ui/workerIdentityPatch';
 import { installWorkerMovementSpeedPatch } from './ui/workerMovementSpeedPatch';
 
@@ -30,6 +31,7 @@ installExplorerWorkPatch();
 installDebugResourcePatch();
 installTradingPostPatch();
 installBuildingWorkerPatch();
+installWorkshopPatch();
 installWorkerIdentityPatch();
 installWorkerMovementSpeedPatch();
 
