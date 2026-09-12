@@ -21,6 +21,7 @@ import { installBuildingWorkerPatch } from './ui/buildingWorkerPatch';
 import { installWorkshopPatch } from './ui/workshopPatch';
 import { installWorkerIdentityPatch } from './ui/workerIdentityPatch';
 import { installWorkerMovementSpeedPatch } from './ui/workerMovementSpeedPatch';
+import { installBottomNavPatch } from './ui/bottomNavPatch';
 
 installWorldExpansionPatch();
 installExpeditionCampPatch();
@@ -42,6 +43,7 @@ installBuildingWorkerPatch();
 installWorkshopPatch();
 installWorkerIdentityPatch();
 installWorkerMovementSpeedPatch();
+installBottomNavPatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
