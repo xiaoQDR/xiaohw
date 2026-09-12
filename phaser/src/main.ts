@@ -11,6 +11,7 @@ import { installHunterWorkPatch } from './ui/hunterWorkPatch';
 import { installDebugResourcePatch } from './ui/debugResourcePatch';
 import { installTradingPostPatch } from './ui/tradingPostPatch';
 import { installBuildingWorkerPatch } from './ui/buildingWorkerPatch';
+import { installWorkerIdentityPatch } from './ui/workerIdentityPatch';
 
 installJobPanelPatch();
 installTrapSystemPatch();
@@ -22,6 +23,7 @@ installHunterWorkPatch();
 installDebugResourcePatch();
 installTradingPostPatch();
 installBuildingWorkerPatch();
+installWorkerIdentityPatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
