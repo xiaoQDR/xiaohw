@@ -10,6 +10,7 @@ import { installTestTimeScalePatch } from './ui/testTimeScalePatch';
 import { installHunterWorkPatch } from './ui/hunterWorkPatch';
 import { installDebugResourcePatch } from './ui/debugResourcePatch';
 import { installTradingPostPatch } from './ui/tradingPostPatch';
+import { installBuildingWorkerPatch } from './ui/buildingWorkerPatch';
 
 installJobPanelPatch();
 installTrapSystemPatch();
@@ -20,6 +21,7 @@ installTestTimeScalePatch();
 installHunterWorkPatch();
 installDebugResourcePatch();
 installTradingPostPatch();
+installBuildingWorkerPatch();
 
 new Phaser.Game({
   type: Phaser.AUTO,
