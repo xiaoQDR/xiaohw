@@ -54,9 +54,16 @@ function campPoint(scene: BuildScene): Phaser.Math.Vector2 {
   return gridPoint(scene, 4, 3);
 }
 
-function forestPoint(scene: BuildScene): Phaser.Math.Vector2 {
-  const base = gridPoint(scene, 17.5, 5.5);
-  return new Phaser.Math.Vector2(base.x + Phaser.Math.Between(-90, 90), base.y + Phaser.Math.Between(-70, 70));
+function explorerRoad(scene: BuildScene): Phaser.Math.Vector2[] {
+  const route = getPrivate<Phaser.Math.Vector2[]>(scene, 'explorerRoadPoints');
+  if (route && route.length >= 2) return route.map((p) => new Phaser.Math.Vector2(p.x, p.y));
+  return [
+    gridPoint(scene, 4.2, 3.4),
+    gridPoint(scene, 8.2, 5.2),
+    gridPoint(scene, 12.4, 6.2),
+    gridPoint(scene, 16.1, 6.8),
+    gridPoint(scene, 18.2, 7.1),
+  ];
 }
 
 function runtimeFor(worker: Phaser.GameObjects.Image): ExplorerRuntime {
@@ -78,6 +85,32 @@ function showResult(scene: BuildScene, worker: Phaser.GameObjects.Image, label: 
     stroke: '#38422d', strokeThickness: 4,
   }).setOrigin(0.5).setDepth(6500);
   scene.tweens.add({ targets: popup, y: popup.y - 38, alpha: 0, duration: 950, onComplete: () => popup.destroy() });
+}
+
+function walkRoute(
+  scene: BuildScene,
+  worker: Phaser.GameObjects.Image,
+  runtime: ExplorerRuntime,
+  token: number,
+  version: number,
+  points: Phaser.Math.Vector2[],
+  index: number,
+  onComplete: () => void,
+): void {
+  if (!valid(worker, runtime, token, version)) return;
+  if (index >= points.length) {
+    onComplete();
+    return;
+  }
+  const target = points[index];
+  scene.tweens.add({
+    targets: worker,
+    x: target.x,
+    y: target.y,
+    duration: Phaser.Math.Between(1450, 1850),
+    ease: 'Sine.InOut',
+    onComplete: () => walkRoute(scene, worker, runtime, token, version, points, index + 1, onComplete),
+  });
 }
 
 function startExpedition(scene: BuildScene, worker: Phaser.GameObjects.Image): void {
@@ -107,44 +140,32 @@ function startExpedition(scene: BuildScene, worker: Phaser.GameObjects.Image): v
   runtime.token += 1;
   runtime.jobVersion = version;
   const token = runtime.token;
-  const destination = forestPoint(scene);
+  const road = explorerRoad(scene);
+  const outbound = road.slice(1);
+  const forestDeep = road[road.length - 1];
   scene.tweens.killTweensOf(worker);
 
-  scene.tweens.add({
-    targets: worker,
-    x: destination.x,
-    y: destination.y,
-    duration: Phaser.Math.Between(3600, 4600),
-    ease: 'Sine.InOut',
-    onComplete: () => {
+  walkRoute(scene, worker, runtime, token, version, outbound, 0, () => {
+    if (!valid(worker, runtime, token, version)) return;
+    runtime.phase = 'exploring';
+    worker.setVisible(false).setPosition(forestDeep.x, forestDeep.y);
+    scene.time.delayedCall(EXPLORE_MS, () => {
       if (!valid(worker, runtime, token, version)) return;
-      runtime.phase = 'exploring';
-      worker.setVisible(false);
-      scene.time.delayedCall(EXPLORE_MS, () => {
+      const roll = Math.random();
+      const drop = DROPS.find((item) => roll < item.under) ?? DROPS[DROPS.length - 1];
+      const amount = Phaser.Math.Between(drop.min, drop.max);
+      addResource(scene, drop.key, amount);
+      refresh(scene);
+      runtime.phase = 'returning';
+      worker.setVisible(true).setPosition(forestDeep.x, forestDeep.y);
+      const returnRoute = road.slice(0, -1).reverse();
+      walkRoute(scene, worker, runtime, token, version, returnRoute, 0, () => {
         if (!valid(worker, runtime, token, version)) return;
-        const roll = Math.random();
-        const drop = DROPS.find((item) => roll < item.under) ?? DROPS[DROPS.length - 1];
-        const amount = Phaser.Math.Between(drop.min, drop.max);
-        addResource(scene, drop.key, amount);
-        refresh(scene);
-        runtime.phase = 'returning';
-        worker.setVisible(true).setPosition(destination.x, destination.y);
-        const camp = campPoint(scene);
-        scene.tweens.add({
-          targets: worker,
-          x: camp.x + Phaser.Math.Between(65, 115),
-          y: camp.y + Phaser.Math.Between(30, 70),
-          duration: Phaser.Math.Between(3600, 4600),
-          ease: 'Sine.InOut',
-          onComplete: () => {
-            if (!valid(worker, runtime, token, version)) return;
-            showResult(scene, worker, drop.label, amount);
-            runtime.phase = 'idle';
-            runtime.retryAt = scene.time.now + 1200;
-          },
-        });
+        showResult(scene, worker, drop.label, amount);
+        runtime.phase = 'idle';
+        runtime.retryAt = scene.time.now + 1200;
       });
-    },
+    });
   });
 }
 
