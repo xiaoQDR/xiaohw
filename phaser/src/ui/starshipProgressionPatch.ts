@@ -172,6 +172,14 @@ function positionUi(scene: AnyBuild, state: UiState): void {
   state.panel.setPosition(view.centerX, view.centerY);
 }
 
+function completeStarshipRecovery(expedition: AnyExpedition): void {
+  const build = expedition.scene.get('build') as AnyBuild;
+  build.starshipRecovered = true;
+  getStarshipState(build);
+  const state = uiStates.get(build as unknown as BuildScene);
+  if (state) refreshUi(build, state);
+}
+
 export function installStarshipProgressionPatch(): void {
   const buildProto = BuildScene.prototype as unknown as Record<string, any>;
   if (!buildProto.__starshipProgressionPatched) {
@@ -214,16 +222,25 @@ export function installStarshipProgressionPatch(): void {
   if (!expeditionProto.__starshipRecoveryPatched) {
     expeditionProto.__starshipRecoveryPatched = true;
     const originalWinEncounter = expeditionProto.winEncounter;
+    const originalReturnToCamp = expeditionProto.returnToCamp;
+
     expeditionProto.winEncounter = function patchedWinEncounter(this: AnyExpedition) {
       const encounter = this.encounter ? { ...this.encounter } : undefined;
       originalWinEncounter.call(this);
       if (!encounter || encounter.tile !== WORLD_TILE.ship) return;
-      const build = this.scene.get('build') as AnyBuild;
-      build.starshipRecovered = true;
-      getStarshipState(build);
-      const state = uiStates.get(build as unknown as BuildScene);
-      if (state) refreshUi(build, state);
-      this.setMessage?.('坠毁星舰已经清理。你决定把它拖回营地，作为特殊设施继续修复。');
+      this.pendingStarshipRecovery = true;
+      this.setMessage?.('坠毁星舰已经清理并固定拖缆。必须活着返回营地，才能把它拖回基地。');
+    };
+
+    expeditionProto.returnToCamp = function patchedReturnToCamp(this: AnyExpedition, died = false) {
+      const shouldRecover = Boolean(this.pendingStarshipRecovery) && !died;
+      if (shouldRecover) completeStarshipRecovery(this);
+      this.pendingStarshipRecovery = false;
+      originalReturnToCamp.call(this, died);
+      if (shouldRecover) {
+        const build = this.scene.get('build') as AnyBuild;
+        build.showToast?.('坠毁星舰已拖回营地，Old Starship 已解锁');
+      }
     };
   }
 }
