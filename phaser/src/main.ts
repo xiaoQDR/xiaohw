@@ -29,6 +29,7 @@ import { installStarshipProgressionPatch } from './ui/starshipProgressionPatch';
 import { installExpeditionMineProgressPatch } from './ui/expeditionMineProgressPatch';
 import { installMineWorkerPatch } from './ui/mineWorkerPatch';
 import { installExpeditionOutpostPatch } from './ui/expeditionOutpostPatch';
+import { installExpeditionResponsivePatch } from './ui/expeditionResponsivePatch';
 
 installWorldExpansionPatch();
 installExpeditionCampPatch();
@@ -55,6 +56,7 @@ installExpeditionCombatDepthPatch();
 installStarshipProgressionPatch();
 installExpeditionMineProgressPatch();
 installExpeditionOutpostPatch();
+installExpeditionResponsivePatch();
 installMineWorkerPatch();
 
 new Phaser.Game({
