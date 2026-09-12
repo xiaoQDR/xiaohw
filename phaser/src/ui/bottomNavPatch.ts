@@ -13,6 +13,7 @@ type NavState = {
 
 const NAV_H = 104;
 const BUILD_MENU_H = 430;
+const BUILD_NAV_GAP = 10;
 const states = new WeakMap<BuildScene, NavState>();
 
 function getPrivate<T>(scene: BuildScene, key: string): T | undefined {
@@ -156,8 +157,15 @@ function layout(scene: BuildScene, state: NavState, snap = false): void {
   if (buildMenu) {
     const visible = state.buildProgress > 0.01;
     buildMenu.setVisible(visible);
-    const openY = view.bottom - BUILD_MENU_H - NAV_H;
-    const yPos = openY + (1 - state.buildProgress) * BUILD_MENU_H;
+
+    // The drawer must never occupy the fixed bottom navigation area. On mobile
+    // browsers the canvas height can change while the address/navigation bars
+    // animate, so always derive both endpoints from the current worldView.
+    const navTop = view.bottom - NAV_H;
+    const openY = navTop - BUILD_NAV_GAP - BUILD_MENU_H;
+    const closedY = navTop - BUILD_NAV_GAP;
+    const yPos = Phaser.Math.Linear(closedY, openY, state.buildProgress);
+
     const setBuildMenuY = getPrivate<(y: number) => void>(scene, 'setBuildMenuY');
     if (setBuildMenuY) setBuildMenuY(yPos);
     else buildMenu.y = yPos;
