@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { BuildScene } from '../scenes/BuildScene';
 
-type JobId = 'gatherer' | 'hunter' | 'trapper' | 'tanner' | 'charcutier';
+type JobId = 'gatherer' | 'hunter' | 'explorer' | 'tanner' | 'charcutier';
 type BuildingId = 'lodge' | 'tannery' | 'smokehouse';
 
 interface JobDef {
@@ -25,8 +25,8 @@ interface JobState {
 const MENU_H = 430;
 const JOBS: JobDef[] = [
   { id: 'gatherer', name: '采集者', description: '自动砍树并把木材送回火堆' },
-  { id: 'hunter', name: '猎人', description: '外出狩猎，获得毛皮与肉', requires: 'lodge', requiresName: '猎人小屋' },
-  { id: 'trapper', name: '陷阱师', description: '管理陷阱与诱饵', requires: 'lodge', requiresName: '猎人小屋' },
+  { id: 'hunter', name: '猎人', description: '外出狩猎，稳定获得毛皮与肉', requires: 'lodge', requiresName: '猎人小屋' },
+  { id: 'explorer', name: '探险家', description: '消耗肉作为补给，深入森林带回稀有材料', requires: 'lodge', requiresName: '猎人小屋' },
   { id: 'tanner', name: '制革师', description: '把毛皮加工成皮革', requires: 'tannery', requiresName: '制革屋' },
   { id: 'charcutier', name: '熏肉师', description: '把肉加工成熏肉', requires: 'smokehouse', requiresName: '熏肉房' },
 ];
@@ -72,13 +72,12 @@ function setWorkerJob(
   worker.setData('jobVersion', version);
   worker.setData('job', nextJob);
   worker.setData('workPhase', 'switching');
-
-  // Only the worker whose job actually changed is interrupted.
   scene.tweens.killTweensOf(worker);
+  worker.setVisible(true);
 
   if (nextJob === 'gatherer') {
     worker.clearTint();
-    anyScene.startWorkerLoop?.(worker, Phaser.Math.Between(120, 380));
+    anyScene.startWorkerLoop?.(worker, Phaser.Math.Between(200, 500));
   }
 }
 
@@ -91,7 +90,6 @@ function applyWorkerJobs(scene: BuildScene, state: JobState): void {
   const remaining: Record<JobId, number> = { ...state.counts };
   const keep = new Set<Phaser.GameObjects.Image>();
 
-  // First pass: preserve existing assignments whenever they still fit the target counts.
   for (const worker of workers) {
     const current = ((worker.getData('job') as JobId | undefined) ?? 'gatherer');
     if (remaining[current] > 0) {
@@ -100,7 +98,6 @@ function applyWorkerJobs(scene: BuildScene, state: JobState): void {
     }
   }
 
-  // Build only the missing slots. This prevents mass reassignment on every +/- click.
   const missing: JobId[] = [];
   for (const jobId of JOB_IDS) {
     for (let i = 0; i < remaining[jobId]; i += 1) missing.push(jobId);
@@ -111,7 +108,6 @@ function applyWorkerJobs(scene: BuildScene, state: JobState): void {
     setWorkerJob(scene, worker, missing[index] ?? 'gatherer', anyScene);
   });
 
-  // Initialize workers that never had a job/version without interrupting their current gather loop.
   for (const worker of workers) {
     if (!worker.getData('job')) worker.setData('job', 'gatherer');
     if (worker.getData('jobVersion') == null) worker.setData('jobVersion', 0);
@@ -178,7 +174,7 @@ function createUi(scene: BuildScene): JobState {
     panel: scene.add.container(0, 0),
     open: false,
     lastPopulation: Number((scene as unknown as { population?: number }).population ?? 0),
-    counts: { gatherer: 0, hunter: 0, trapper: 0, tanner: 0, charcutier: 0 },
+    counts: { gatherer: 0, hunter: 0, explorer: 0, tanner: 0, charcutier: 0 },
     countTexts,
     stateTexts,
   };
